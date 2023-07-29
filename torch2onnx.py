@@ -5,7 +5,7 @@ from annotator.canny import CannyDetector
 from cldm.model import create_model, load_state_dict
 import gc
 
-model_file = './models/control_sd15_canny.pth'
+model_file = '/home/player/ControlNet/models/control_sd15_canny.pth'
 onnx_path = './onnx_models/'
 
 if not torch.cuda.is_available() :

@@ -31,7 +31,7 @@ class hackathon():
 
         # 用来加载配置
         self.model = create_model('./models/cldm_v15.yaml')
-        self.model.load_state_dict(load_state_dict('./models/control_sd15_canny.pth', location='cuda'))
+        self.model.load_state_dict(load_state_dict('/home/player/ControlNet/models/control_sd15_canny.pth', location='cuda'))
         self.model = self.model.cuda()
 
 
