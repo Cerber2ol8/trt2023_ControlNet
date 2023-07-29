@@ -21,7 +21,7 @@ files = os.listdir(onnx_path)
 
 
 def model():
-    model = create_model('./models/cldm_v15.yaml').cpu()
+    model = create_model(model_file).cpu()
     model.load_state_dict(
         load_state_dict(
             model_file,
