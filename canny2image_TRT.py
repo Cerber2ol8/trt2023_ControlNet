@@ -46,6 +46,7 @@ class hackathon():
         self.vae = self.trt_engine.vae
 
         self.ddim_sampler = DDIMSampler(self.model,trt_engine=self.trt_engine)
+        
 
 
         # self.encode = self.model.first_stage_config.cuda()
@@ -84,7 +85,7 @@ class hackathon():
 
 
 
-    def process(self, input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, ddim_steps, guess_mode, strength, scale, seed, eta, low_threshold, high_threshold):
+    def process_(self, input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, ddim_steps, guess_mode, strength, scale, seed, eta, low_threshold, high_threshold):
         with torch.no_grad():
             img = resize_image(HWC3(input_image), image_resolution)
             H, W, C = img.shape
@@ -99,6 +100,8 @@ class hackathon():
             if seed == -1:
                 seed = random.randint(0, 65535)
             seed_everything(seed)
+
+            self.ddim_sampler.apply_model = self.ddim_sampler.apply_model_
 
 
             # cond = {"c_concat": [control], "c_crossattn": [self.conditioning([prompt + ', ' + a_prompt] * num_samples)]}
@@ -125,8 +128,71 @@ class hackathon():
         return results
     
 
+    def memcpyHostToDevice(self, data):
+        data = np.ascontiguousarray(data)
+        data_ptr = cudart.cudaMalloc(data.nbytes)[1]
+        cudart.cudaMemcpy(data_ptr, data.ctypes.data, data.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+        return data_ptr
+
+    def process(self, input_image, prompt, a_prompt, n_prompt, num_samples, image_resolution, ddim_steps, guess_mode, strength, scale, seed, eta, low_threshold, high_threshold):
+        with torch.no_grad():
+            img = resize_image(HWC3(input_image), image_resolution)
+            H, W, C = img.shape
+
+            detected_map = self.apply_canny(img, low_threshold, high_threshold)
+            detected_map = HWC3(detected_map)
+
+            control = torch.from_numpy(detected_map.copy()).float().cuda() / 255.0
+            control = torch.stack([control for _ in range(num_samples)], dim=0)
+            control = einops.rearrange(control, 'b h w c -> b c h w').clone()
+
+            if seed == -1:
+                seed = random.randint(0, 65535)
+            seed_everything(seed)
 
 
+            # positive = self.conditioning([prompt + ', ' + a_prompt]* num_samples)
+            # negetive = self.conditioning([n_prompt] * num_samples)
+            positive = self.model.get_learned_conditioning([prompt + ', ' + a_prompt]* num_samples)
+            negetive = self.model.get_learned_conditioning([n_prompt] * num_samples)
+
+
+            cond = {"c_concat": [control], "c_crossattn": [positive]}
+            un_cond = {"c_concat": None if guess_mode else [control], "c_crossattn": [negetive]}
+
+            cond_c_concat_ptr = self.memcpyHostToDevice(torch.cat(cond['c_concat'], 1).cpu().numpy())
+            cond_crossattn_ptr = self.memcpyHostToDevice(torch.cat(cond['c_crossattn'], 1).cpu().numpy())
+            cond["c_concat"] = cond_c_concat_ptr
+            cond["c_crossattn"]= cond_crossattn_ptr
+
+
+            un_cond_c_concat_ptr = self.memcpyHostToDevice(torch.cat(un_cond['c_concat'], 1).cpu().numpy())
+            un_cond_crossattn_ptr = self.memcpyHostToDevice(torch.cat(un_cond['c_crossattn'], 1).cpu().numpy())
+            un_cond["c_concat"] = un_cond_c_concat_ptr
+            un_cond["c_crossattn"]= un_cond_crossattn_ptr
+
+            shape = (4, H // 8, W // 8)
+
+
+            self.model.control_scales = [strength * (0.825 ** float(12 - i)) for i in range(13)] if guess_mode else ([strength] * 13)  # Magic number. IDK why. Perhaps because 0.825**12<0.01 but 0.826**12>0.01
+            samples, intermediates = self.ddim_sampler.sample(ddim_steps, num_samples,
+                                                        shape, cond, verbose=False, eta=eta,
+                                                        unconditional_guidance_scale=scale,
+                                                        unconditional_conditioning=un_cond)
+
+
+            results = self.decode_torch(samples.cuda(), num_samples)
+            #results = self.decode(samples, num_samples)
+
+            cudart.cudaFree(cond_c_concat_ptr)
+            cudart.cudaFree(cond_c_concat_ptr)
+
+            cudart.cudaFree(cond_c_concat_ptr)
+            cudart.cudaFree(cond_c_concat_ptr)
+            
+
+        return results
+    
 
 
 
@@ -205,25 +271,6 @@ class DDIMSampler(object):
                ucg_schedule=None,
                **kwargs
                ):
-        if conditioning is not None:
-            if isinstance(conditioning, dict):
-                ctmp = conditioning[list(conditioning.keys())[0]]
-                while isinstance(ctmp, list): ctmp = ctmp[0]
-                cbs = ctmp.shape[0]
-                if cbs != batch_size:
-                    print(f"Warning: Got {cbs} conditionings but batch-size is {batch_size}")
-                
-                
-                
-
-            elif isinstance(conditioning, list):
-                for ctmp in conditioning:
-                    if ctmp.shape[0] != batch_size:
-                        print(f"Warning: Got {cbs} conditionings but batch-size is {batch_size}")
-
-            else:
-                if conditioning.shape[0] != batch_size:
-                    print(f"Warning: Got {conditioning.shape[0]} conditionings but batch-size is {batch_size}")
 
         self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
         # sampling
@@ -325,6 +372,7 @@ class DDIMSampler(object):
             model_output = self.apply_model(x, t, c)
         else:
 
+            # host端的计算 ，apply_model中出现 host->deivce->host
             model_t = self.apply_model(x, t, c)
             model_uncond = self.apply_model(x, t, unconditional_conditioning)
             model_output = model_uncond + unconditional_guidance_scale * (model_t - model_uncond)
@@ -371,6 +419,33 @@ class DDIMSampler(object):
 
 
     def apply_model(self, x_noisy, t, cond, *args, **kwargs):
+        # 此时传入的 cond 为输入数据的地址
+        # controlnet 和 unet 对应的输入也应修改为数据地址
+
+        hint = cond['c_concat']
+        cond_txt = cond['c_crossattn']
+
+
+        # 输出为 13*tensor
+        control_trt = self.control_net([x_noisy, hint, t, cond_txt])
+        # 此处为 device->host 然后进行矩阵乘法
+
+        control = [c * scale for c, scale in zip(control_trt, self.model.control_scales)]
+
+
+        # 然后会 host->device 进行运算
+        # 可以考虑使用cuda api执行矩阵计算 避免来回传输数据造成的性能浪费
+
+        inputData = [x_noisy, t, cond_txt]
+        for c in control:
+            inputData.append(c)
+
+
+        eps_trt = self.unet(inputData)[0]
+        return eps_trt
+
+
+    def apply_model_(self, x_noisy, t, cond, *args, **kwargs):
         # assert isinstance(cond, dict)
         # cond_txt = torch.cat(cond['c_crossattn'], 1)
 
@@ -394,7 +469,7 @@ class DDIMSampler(object):
 
         #eps_trt = self.unet(control, is_cond)
         #eps_trt = self.unet.infer(x_noisy, t, cond_txt, control)
-        eps_trt = self.unet.infer(inputData)[0]
+        eps_trt = self.unet(inputData)[0]
         #eps_trt = torch.tensor(eps_trt).squeeze(0)
 
         return eps_trt

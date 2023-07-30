@@ -11,8 +11,11 @@ image_log/
 
 onnx_models/
 onnx_models_old/
+onnx_models_opti/
 trt_dir/
 trt_dir_old/
+trt_dir_opti/
+tools/
 
 gradio_pose2image_private.py
 gradio_canny2image_private.py
