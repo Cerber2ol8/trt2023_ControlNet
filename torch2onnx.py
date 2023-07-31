@@ -74,36 +74,13 @@ def get_onnx(model):
         # 先导出clip
         if k == "clip":
 
-
-            
             # clip调用了encode,encode调用了forward
             # forward输入时，一共就两步，一个是tokenizer,一个是transformer
-            # transformer的__call__默认也是forward,所以干脆我直接去clip的transformer导出onnx就行了。
-            _model = temp_model.transformer
-            # 这里把tokenizer单独拿出来做一个函数，后续给prompt做分词用
-            # tokenizer = temp_model.tokenizer
-            # tokens = tokenizer.tokenize("this is a test sequence")
-            # ids = tokenizer.convert_tokens_to_ids(tokens)
-            
-            #exit()
-            
-            # 然后下面是onnx导出代码
-            #input_ids = torch.tensor([ids]).cuda()
+            # 修改了forward函数 使得输入为token
+            _model = temp_model
 
+            input_ids = torch.randint(0,49408,(1, 77)).to("cuda")
 
-            # 下面的inputs是输入变量列表，你可以去debug一下，实际是一个[torch.Tensor]
-            #print(_model.forward)
-            input_ids = torch.randint(0,49408,(3, 77)).to("cuda")
-            #output = _model(input_ids)
-            # onnx_path: 保存路径
-            # input_names, output_names 对应输入输出名列表，这个debug一下，可以随便命名
-            # dynamic_axes是一个dict，这里我给一个样例：{'input_ids': {0: 'B'},'text_embeddings': {0: 'B'}}
-            # 大概意思就是输入变量`input_ids`和输出变量`text_embeddings`的第0维可以动态变化，其实也就是batch_size支持动态咯。
-            # opset_version: 这里固定为17就行
-
-            #text_embeddings = _model(input_ids)
-
-            
             out = "FrozenCLIPEmbedder.onnx"
             if out in files:
                 continue
@@ -117,8 +94,8 @@ def get_onnx(model):
                 opset_version=17,
                 do_constant_folding=True,
                 input_names=["input_ids"],
-                output_names=["last_hidden_states","pooler_output"],
-                dynamic_axes={'input_ids': {0: 'bs'},'last_hidden_states': {0: 'bs'},'pooler_output': {0: 'bs'}},
+                output_names=["last_hidden_states"],
+                dynamic_axes={'input_ids': {0: 'bs'},'last_hidden_states': {0: 'bs'}},
             )
 
 

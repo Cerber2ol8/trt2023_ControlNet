@@ -40,12 +40,12 @@ class hackathon():
 
         self.trt_engine = trt_engine()
 
-        #self.model = ControlLDMx(self.trt_engine, model)
-        
         self.clip = self.trt_engine.clip
         self.vae = self.trt_engine.vae
 
         self.ddim_sampler = DDIMSampler(self.model,trt_engine=self.trt_engine)
+
+        self.scale_factor = 0.18215
         
 
 
@@ -64,13 +64,13 @@ class hackathon():
     def conditioning(self, prompt_txt):
         batch_encoding = self.encode(prompt_txt)
         tokens = batch_encoding['input_ids']
-        outputs = torch.from_numpy(self.transformer(input_ids=tokens)).cuda()
+        outputs = torch.from_numpy(self.transformer(input_ids=tokens))
         return outputs
     
 
     def decode(self, samples, num_samples):
-
-        x_samples_trt = self.vae([samples])[0]
+        z = 1. / self.scale_factor * samples
+        x_samples_trt = self.vae([z])[0]
         x_samples_trt = (einops.rearrange(x_samples_trt, 'b c h w -> b h w c') * 127.5 + 127.5).clip(0, 255).astype(np.uint8)
         results = [x_samples_trt[i] for i in range(num_samples)]
         return results
@@ -101,15 +101,15 @@ class hackathon():
                 seed = random.randint(0, 65535)
             seed_everything(seed)
 
-            self.ddim_sampler.apply_model = self.ddim_sampler.apply_model_
+            # self.ddim_sampler.apply_model = self.ddim_sampler.apply_model_
 
 
-            # cond = {"c_concat": [control], "c_crossattn": [self.conditioning([prompt + ', ' + a_prompt] * num_samples)]}
-            # un_cond = {"c_concat": None if guess_mode else [control], "c_crossattn": [self.conditioning([n_prompt] * num_samples)]}
+            cond = {"c_concat": [control], "c_crossattn": [self.conditioning([prompt + ', ' + a_prompt] * num_samples)]}
+            un_cond = {"c_concat": None if guess_mode else [control], "c_crossattn": [self.conditioning([n_prompt] * num_samples)]}
 
 
-            cond = {"c_concat": [control], "c_crossattn": [self.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]}
-            un_cond = {"c_concat": None if guess_mode else [control], "c_crossattn": [self.model.get_learned_conditioning([n_prompt] * num_samples)]}
+            # cond = {"c_concat": [control], "c_crossattn": [self.model.get_learned_conditioning([prompt + ', ' + a_prompt] * num_samples)]}
+            # un_cond = {"c_concat": None if guess_mode else [control], "c_crossattn": [self.model.get_learned_conditioning([n_prompt] * num_samples)]}
             
 
             shape = (4, H // 8, W // 8)
@@ -181,8 +181,8 @@ class hackathon():
                                                         unconditional_conditioning=un_cond)
 
 
-            results = self.decode_torch(samples.cuda(), num_samples)
-            #results = self.decode(samples, num_samples)
+            #results = self.decode_torch(samples.cuda(), num_samples)
+            results = self.decode(samples, num_samples)
 
             cudart.cudaFree(cond_c_concat_ptr)
             cudart.cudaFree(cond_c_concat_ptr)

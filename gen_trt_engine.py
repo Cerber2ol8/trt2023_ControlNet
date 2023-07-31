@@ -2,7 +2,7 @@ import os
 import tensorrt as trt
 
 
-onnx_dir = "./onnx_models/"
+onnx_dir = "./onnx_models_opti/"
 engine_dir = "./trt_dir/"
 
 H = 256
@@ -11,8 +11,8 @@ h = H // 8
 w = W // 8
 
 def build_trt_engine(in_onnx, out_trt,inputs, quant='fp16'):
-    #os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --fp16")
-    os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --{quant} --optShapes={inputs}")
+    #os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --verbose --buildOnly")
+    os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --buildOnly")
 
 
 inputs_dict = {"FrozenCLIPEmbedder":"input_ids:1x77",

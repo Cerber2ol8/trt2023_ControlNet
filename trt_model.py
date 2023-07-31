@@ -78,7 +78,7 @@ class model(object):
                         "pooler_output" :   (1, 768),}
 
             self.nInput = 1
-            self.nOutput = 2
+            self.nOutput = 1
 
 
         elif name == 'control':
@@ -469,7 +469,7 @@ class trt_unet(model):
 
 class trt_engine():
 
-    def __init__(self, path_to_engine="./trt_dir/") -> None:
+    def __init__(self, path_to_engine="./trt_dir_opti/") -> None:
 
 
         # 创建engine
