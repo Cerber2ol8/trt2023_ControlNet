@@ -469,7 +469,7 @@ class trt_unet(model):
 
 class trt_engine():
 
-    def __init__(self, path_to_engine="./trt_dir_opti/") -> None:
+    def __init__(self, path_to_engine="./trt_dir/") -> None:
 
 
         # 创建engine
