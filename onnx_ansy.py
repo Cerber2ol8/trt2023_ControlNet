@@ -65,6 +65,7 @@ def createSingelOnnxModel(ModelPath,nodename,SaveType="",SavePath=""):
 #获取节点数量
 def getNodeNum(model):
     return len(model.graph.node)
+
 #获取节点类型
 def getNodetype(model):
     op_name = []
@@ -72,6 +73,7 @@ def getNodetype(model):
         if model.graph.node[i].op_type not in op_name:
             op_name.append(model.graph.node[i].op_type)
     return op_name
+
 #获取节点名列表
 def getNodeNameList(model):
     NodeNameList = []
@@ -88,5 +90,10 @@ def getModelOutputInfo(model):
 if __name__ == '__main__':
     model = loadOnnxModel("./onnx_models/unet.onnx")
     NodeNum = getNodeNum(model)
-    print(NodeNum)
+    Nodes = getNodeNameList(model=model)
+    for node in Nodes:
+        print(node)
+
+
+    print("total nodes:", NodeNum)
 

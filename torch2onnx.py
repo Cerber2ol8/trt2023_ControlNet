@@ -45,8 +45,6 @@ def print_models(state_dict):
 
 
 def get_onnx(model):
-
-    # 取4个子模型，做一个映射
     state_dict = {
         "clip": "cond_stage_model",
         "control_net": "control_model",
@@ -54,10 +52,7 @@ def get_onnx(model):
         "vae": "first_stage_model"
     }
 
-    # for layer in state_dict:
-    #     print(layer, '\t', state_dict[layer].shape)
-    #     if layer.find("input")>-1:
-    #         print("find input",layer)
+
     H = 256
     W = 384
 
@@ -65,47 +60,40 @@ def get_onnx(model):
         if k != "unet":
             temp_model = getattr(model, v)
         else:
-            # unet比较特殊，在model.model下面的一个diffusion_model属性里面
             temp_model = getattr(model.model, v)
 
-        # temp_model为对应的子模型
-        # 由于onnx导出的时候一般是导出__call__函数，而__call__这个函数在torch.nn.Module的类下面一般会调用forward函数
-        # 有两个在pipline中调用的不是forward函数，所以下面要做一些函数替换
-        # 先导出clip
+
+
         if k == "clip":
 
-            # clip调用了encode,encode调用了forward
-            # forward输入时，一共就两步，一个是tokenizer,一个是transformer
-            # 修改了forward函数 使得输入为token
+
             _model = temp_model
 
-            input_ids = torch.randint(0,49408,(1, 77)).to("cuda")
+            input_ids = torch.randint(0,49408,(1, 77),dtype=torch.int32).to("cuda")
 
             out = "FrozenCLIPEmbedder.onnx"
             if out in files:
                 continue
             print("exporting FrozenCLIPEmbedder...")
-            torch.onnx.export(
-                _model,
-                (input_ids),
-                onnx_path+out,
-                export_params=True,
-                #verbose=True,
-                opset_version=17,
-                do_constant_folding=True,
-                input_names=["input_ids"],
-                output_names=["last_hidden_states"],
-                dynamic_axes={'input_ids': {0: 'bs'},'last_hidden_states': {0: 'bs'}},
-            )
+
+            with torch.inference_mode(mode=True):
+                torch.onnx.export(
+                    _model,
+                    (input_ids),
+                    onnx_path+out,
+                    export_params=True,
+                    #verbose=True,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    input_names=["input_ids"],
+                    output_names=["last_hidden_states"],
+                    dynamic_axes={'input_ids': {0: 'bs'},'last_hidden_states': {0: 'bs'}},
+                )
 
 
-        # 再导出control_net
         elif k == "control_net":
+
             out = "control_net.onnx"
-
-
-
-
             _model = temp_model
             x_in = torch.randn(1,4,H//8, W //8, dtype=torch.float32).to("cuda")
             h_in = torch.randn(1,3,H, W, dtype=torch.float32).to("cuda")
@@ -148,18 +136,19 @@ def get_onnx(model):
                 continue
             print("exporting control_net ...")
 
-            torch.onnx.export(
-                _model,
-                (x_in, h_in, t_in, c_in),
-                onnx_path+out,
-                export_params=True,
-                #verbose=True,
-                opset_version=17,
-                do_constant_folding=True,
-                input_names=['x_in', "h_in", "t_in", "c_in"],
-                output_names=output_names,
-                dynamic_axes=dynamic_table
-            )
+            with torch.inference_mode(mode=True):
+                torch.onnx.export(
+                    _model,
+                    (x_in, h_in, t_in, c_in),
+                    onnx_path+out,
+                    export_params=True,
+                    #verbose=True,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    input_names=['x_in', "h_in", "t_in", "c_in"],
+                    output_names=output_names,
+                    dynamic_axes=dynamic_table
+                )
 
         # 导出unet
         elif k == "unet":
@@ -225,27 +214,26 @@ def get_onnx(model):
             if out in files:
                 continue
             print("exporting unet ...")
-            torch.onnx.export(
-                _model,
-                tuple(inputs),
-                f=onnx_path+out,
-                export_params=True,
-                #verbose=True,
-                opset_version=17,
-                do_constant_folding=True,
-                input_names=input_names,
-                output_names=["unet_output"],
-                dynamic_axes=dynamic_table
-            )
 
-            # 和control_net一样的操作，一样的bug,就是输入输出有些不一样
-            # unet输入包含controlNet的输出，所以input_names里面。由于controlNet的输出是一个长度为13的List，所以这个input_names,需要将对应变量的输入名，改成13个，例如control_1, control_2..control_13这样。
-        # 再导出vae
+            with torch.inference_mode(mode=True), torch.autocast("cuda"):
+                torch.onnx.export(
+                    _model,
+                    tuple(inputs),
+                    f=onnx_path+out,
+                    export_params=True,
+                    #verbose=True,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    input_names=input_names,
+                    output_names=["unet_output"],
+                    dynamic_axes=dynamic_table
+                )
+
         elif k == "vae":
             out = "vae_decoder.onnx"
 
             _model = temp_model
-            # vae调用的是decode,而导出onnx需要forward,所以这里做一个替换即可。
+
             _model.forward = _model.decode
             z_in = torch.randn(1,4,128,128, dtype=torch.float32).to("cuda")
             #outputs = _model(z_in) #[1,4,256,256]
@@ -253,42 +241,27 @@ def get_onnx(model):
             if out in files:
                 continue
             print("exporting vae decoder...")
-            # 然后和上面一样，做onnx导出
-            torch.onnx.export(
-                _model,
-                z_in,
-                onnx_path+out,
-                export_params=True,
-                verbose=True,
-                opset_version=17,
-                do_constant_folding=True,
-                input_names=["z_in"],
-                output_names=["vae_out"],
-                dynamic_axes={'z_in': {0: 'B', 2 : 'H', 3 : 'W'}, 'vae_out': {0: 'B'}},
-            )
+            with torch.inference_mode(mode=True):
+                torch.onnx.export(
+                    _model,
+                    z_in,
+                    onnx_path+out,
+                    export_params=True,
+                    verbose=True,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    input_names=["z_in"],
+                    output_names=["vae_out"],
+                    dynamic_axes={'z_in': {0: 'B', 2 : 'H', 3 : 'W'}, 'vae_out': {0: 'B'}},
+                )
         else:
             _model = None
-        # 导onnx后，这里model其实可以丢掉了，防止他占用显存和内存
+
         if _model is not None:
             del _model
             torch.cuda.empty_cache()
             gc.collect()
 
-def troch2onnx(model):
-
-
-
-
-    # 构建输入数据
-    x = torch.randn(1, 1, 224, 224, requires_grad=True)
-    # 导出模型
-    torch.onnx.export(model,               # 要转换的模型
-                    x,                         # 模型输入
-                    onnx_path,   # 模型保存位置              
-                    opset_version=11,          # onnx算子版本                
-                    input_names = ['input'],   # 模型的输入名称
-                    output_names = ['output']  # 模型的输出名称
-                    )
 
 
 model = model()

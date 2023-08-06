@@ -25,7 +25,7 @@ for i in range(20):
     img = cv2.imread(path)
     start = datetime.datetime.now().timestamp()
     new_img = hk.process(img,
-            "a bird", 
+                "a bird", 
             "best quality, extremely detailed", 
             "longbody, lowres, bad anatomy, bad hands, missing fingers", 
             1, 

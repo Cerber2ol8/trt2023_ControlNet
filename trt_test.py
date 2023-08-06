@@ -3,6 +3,7 @@ import tensorrt as trt
 import numpy as np
 from cuda import cudart
 
+
 TRT_LOGGER = trt.Logger()
 engine_file = ""
 engine_path = "./trt_dir/"

@@ -31,11 +31,11 @@ class hackathon():
 
         # 用来加载配置
         self.model = create_model('./models/cldm_v15.yaml')
-        self.model.load_state_dict(load_state_dict('/home/player/ControlNet/models/control_sd15_canny.pth', location='cuda'))
+        #self.model.load_state_dict(load_state_dict('/home/player/ControlNet/models/control_sd15_canny.pth', location='cuda'))
         self.model = self.model.cuda()
 
 
-        self.tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
+        self.clip_tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
 
 
         self.trt_engine = trt_engine()
@@ -54,18 +54,15 @@ class hackathon():
         # self.trt_logger = trt.Logger(trt.Logger.WARNING)
         # trt.init_libnvinfer_plugins(self.trt_logger, '')
 
-    def encode(self, text):
-        batch_encoding = self.tokenizer(text, truncation=True, max_length=77, return_length=True,
-                            return_overflowing_tokens=False, padding="max_length", return_tensors="pt")
-        return batch_encoding
-    def transformer(self, input_ids):
-        return self.clip(input_ids)[0]
+    def tokenizer(self, prompt_txt):
+        tokens =  self.clip_tokenizer(prompt_txt, truncation=True, max_length=77, return_length=True,
+                                        return_overflowing_tokens=False, padding="max_length", return_tensors="pt")['input_ids']
+        return np.array(tokens,dtype=np.int32)
 
-    def conditioning(self, prompt_txt):
-        batch_encoding = self.encode(prompt_txt)
-        tokens = batch_encoding['input_ids']
-        outputs = torch.from_numpy(self.transformer(input_ids=tokens))
-        return outputs
+    
+    def conditioning_torch(self,prompt_txt):
+        return self.model.cond_stage_model.encode(prompt_txt)
+    
     
 
     def decode(self, samples, num_samples):
@@ -150,11 +147,24 @@ class hackathon():
                 seed = random.randint(0, 65535)
             seed_everything(seed)
 
+            inputs_positive = [prompt + ', ' + a_prompt]* num_samples
+            inputs_negetive = [n_prompt] * num_samples
 
-            # positive = self.conditioning([prompt + ', ' + a_prompt]* num_samples)
-            # negetive = self.conditioning([n_prompt] * num_samples)
-            positive = self.model.get_learned_conditioning([prompt + ', ' + a_prompt]* num_samples)
-            negetive = self.model.get_learned_conditioning([n_prompt] * num_samples)
+
+            tokens_pos = torch.from_numpy(self.tokenizer(inputs_positive))
+            tokens_neg = torch.from_numpy(self.tokenizer(inputs_negetive))
+
+            #positive_trt = self.conditioning(inputs_positive)
+            #negetive_trt = self.conditioning(inputs_negetive)
+
+            positive = torch.from_numpy(self.clip(tokens_pos)[0])
+            negetive = torch.from_numpy(self.clip(tokens_neg)[0])
+        
+            #positive = self.model.cond_stage_model.forward(tokens.cuda())
+            #positive = self.model.get_learned_conditioning(inputs_positive)
+            #negetive = self.model.get_learned_conditioning(inputs_negetive)
+
+            #print("abs max:", np.abs(positive_trt-positive.cpu().numpy()).max())
 
 
             cond = {"c_concat": [control], "c_crossattn": [positive]}

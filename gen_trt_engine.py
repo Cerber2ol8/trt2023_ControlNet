@@ -2,7 +2,7 @@ import os
 import tensorrt as trt
 
 
-onnx_dir = "./onnx_models_opti/"
+onnx_dir = "./onnxsim_model/"
 engine_dir = "./trt_dir/"
 
 H = 256
@@ -10,10 +10,12 @@ W = 384
 h = H // 8
 w = W // 8
 
-def build_trt_engine(in_onnx, out_trt,inputs, quant='fp16'):
+def build_trt_engine(in_onnx, out_trt,inputs, is_fp16=True):
     #os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --verbose --buildOnly")
-    os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --buildOnly")
-
+    if is_fp16:
+        os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --fp16 --buildOnly")
+    else:
+        os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --buildOnly")
 
 inputs_dict = {"FrozenCLIPEmbedder":"input_ids:1x77",
           "control_net":f"x_in:1x4x{h}x{w},h_in:1x3x{H}x{W},t_in:1,c_in:1x77x768,",
@@ -46,8 +48,13 @@ for onnx_file in os.listdir(onnx_dir):
         engine_file = onnx_file.replace(".onnx", ".engine")
         out_file = os.path.join(engine_dir,engine_file)
         if not os.path.exists(out_file):
-            inputs = inputs_dict[onnx_file.split('.')[0]]
-            build_trt_engine(os.path.join(onnx_dir,onnx_file),out_file,inputs)
+            model_name = onnx_file.split('.')[0]
+            inputs = inputs_dict[model_name]
+            if model_name == 'FrozenCLIPEmbedder':
+                build_trt_engine(os.path.join(onnx_dir,onnx_file),out_file,inputs,is_fp16=False)
+            else:
+                build_trt_engine(os.path.join(onnx_dir,onnx_file),out_file,inputs,is_fp16=True)
+
         else:
             print(f'file {out_file} existed, skip build engine.')
 

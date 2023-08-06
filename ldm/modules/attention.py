@@ -73,7 +73,11 @@ class FeedForward(nn.Module):
         )
 
     def forward(self, x):
-        return self.net(x)
+        b,h,w = x.shape
+        x=x.reshape(b*h,w)
+        xout = self.net(x)
+        #return self.net(x)
+        return xout.reshape(b,h,w)
 
 
 def zero_module(module):
@@ -160,7 +164,13 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, context=None, mask=None):
+        self.dim_head = dim_head
+
+
+
+
+
+    def forward1(self, x, context=None, mask=None):
         h = self.heads
 
         q = self.to_q(x)
@@ -174,7 +184,8 @@ class CrossAttention(nn.Module):
         if _ATTN_PRECISION =="fp32":
             with torch.autocast(enabled=False, device_type = 'cuda'):
                 q, k = q.float(), k.float()
-                sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+                # 批量矩阵乘 q*k
+                sim = einsum('b i d, b j d -> b i j', q, k) * self.scale  # 计算 q*k/(d^-0.5)
         else:
             sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
         
@@ -189,10 +200,143 @@ class CrossAttention(nn.Module):
         # attention, what we cannot get enough of
         sim = sim.softmax(dim=-1)
 
+
+        # 批量矩阵乘 sim * v
         out = einsum('b i j, b j d -> b i d', sim, v)
+        
+
         out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
         return self.to_out(out)
 
+    def forward(self, x, context=None, mask=None):
+        h = self.heads
+        d = self.dim_head
+
+        q = self.to_q(x)
+        context = default(context, x)
+        k = self.to_k(context)
+        v = self.to_v(context)
+
+        #q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+
+        b,i,hd = q.shape
+        q = q.reshape(b,i,h,d).permute(0,2,1,3).reshape(h*b,i,d)
+
+
+        b,j,hd = k.shape
+        k = k.reshape(b,j,h,d).permute(0,2,1,3).reshape(h*b,j,d)
+        v = v.reshape(b,j,h,d).permute(0,2,1,3).reshape(h*b,j,d)
+
+        # force cast to fp32 to avoid overflowing
+        if _ATTN_PRECISION =="fp32":
+            with torch.autocast(enabled=False, device_type = 'cuda'):
+                # q, k = q.float(), k.float()
+                # sim = torch.matmul(q , torch.t(k)) * self.scale
+                # 批量矩阵乘 q*k
+                sim = einsum('b i d, b j d -> b i j', q, k) * self.scale  # 计算 q*k/(d^-0.5)
+        else:
+            sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+            #sim = torch.matmul(q , torch.t(k)) * self.scale
+        
+        del q, k
+    
+        if exists(mask):
+            print('mask')
+
+        # attention, what we cannot get enough of
+        sim = sim.softmax(dim=-1)
+
+
+        # 批量矩阵乘 sim * v
+
+        #torch.matmul(q , torch.t(k))
+        
+        out = einsum('b i j, b j d -> b i d', sim, v)
+        
+
+        out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+        return self.to_out(out)
+
+
+
+    def forward_(self, x, context=None, mask=None):
+        h = self.heads
+
+        # b=1 h=8
+
+        # 三个mut
+        q = self.to_q(x).contiguous()
+        context = default(context, x).contiguous()
+        k = self.to_k(context).contiguous()
+        v = self.to_v(context).contiguous()
+
+        # h=8 b=1
+        # 'b n (h d) -> (b h) n d' 等价于
+        # n (h d) -> h n d
+
+        b,i,hd = q.shape
+        assert hd % h == 0
+        d = int(hd/h)
+        q = q.view(i,h,d).permute(1, 0, 2) # i h d -> h i d
+        q = q.reshape(i*h,d)
+
+        b,j,hd = k.shape
+        k = k.view(j,h,d).permute(1, 0, 2) # j h d -> h j d
+        v = v.view(j,h,d).permute(1, 0, 2) # j h d -> h j d
+        k = k.reshape(j*h,d)
+        v = v.reshape(j*h,d)
+
+
+        # bh,i,d = q.shape
+        # q = q.reshape(bh*i,d)
+
+        #q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> (b h) n d', h=h), (q, k, v))
+
+
+        # cross-attn 中 q的n值与 k v 不同
+
+        # 手动reshape降为2d矩阵乘
+        # bh,i,d = q.shape
+        # q = q.reshape(bh*i,d)
+
+        # bh,j,d = k.shape
+        # k = k.reshape(bh*j,d)
+        # v = v.reshape(bh*j,d)
+
+        # force cast to fp32 to avoid overflowing
+        # if _ATTN_PRECISION =="fp32":
+        #     with torch.autocast(enabled=False, device_type = 'cuda'):
+        #         q, k = q.float(), k.float()
+        #         # 批量矩阵乘 q*k
+        #         sim = einsum('b i d, b j d -> b i j', q, k) * self.scale  # 计算 q*k/(d^-0.5)
+        # else:
+        #     sim = einsum('b i d, b j d -> b i j', q, k) * self.scale
+
+        # 使用2d矩阵乘法
+        if _ATTN_PRECISION =="fp32":
+            with torch.autocast(enabled=False, device_type = 'cuda'):
+                q, k = q.float(), k.float()
+                # h*i d , d h*j -> h*i h*j
+                k = torch.t(k)
+                sim = torch.matmul(q, k) * self.scale  # 计算 q*k/(d^-0.5)
+        else:
+            k = torch.t(k)
+            sim = torch.matmul(q, k) * self.scale
+        del q, k
+
+
+        # attention, what we cannot get enough of
+        sim = sim.softmax(dim=-1) # 执行softmax bh*i bh*j
+
+        # 批量矩阵乘 sim * v
+        # out = einsum('b i j, b j d -> b i d', sim, v)
+        out = torch.matmul(sim,v)   # h*i h*j , h*j d-> h*i d
+        out = out.reshape(1,h,i,d).permute(0,2,1,3).reshape(1,i,hd)
+        
+        # 8*1 n d -> 1 n 8*d
+
+        #out = rearrange(out, '(b h) n d -> b n (h d)', h=h)
+        return self.to_out(out)
 
 class MemoryEfficientCrossAttention(nn.Module):
     # https://github.com/MatthieuTPHR/diffusers/blob/d80b531ff8060ec1ea982b65a1b8df70f73aa67c/src/diffusers/models/attention.py#L223
@@ -254,7 +398,7 @@ class BasicTransformerBlock(nn.Module):
         attn_mode = "softmax-xformers" if XFORMERS_IS_AVAILBLE else "softmax"
         assert attn_mode in self.ATTENTION_MODES
         attn_cls = self.ATTENTION_MODES[attn_mode]
-        self.disable_self_attn = disable_self_attn
+        self.disable_self_attn = disable_self_attn  # False
         self.attn1 = attn_cls(query_dim=dim, heads=n_heads, dim_head=d_head, dropout=dropout,
                               context_dim=context_dim if self.disable_self_attn else None)  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
@@ -269,7 +413,7 @@ class BasicTransformerBlock(nn.Module):
         return checkpoint(self._forward, (x, context), self.parameters(), self.checkpoint)
 
     def _forward(self, x, context=None):
-        x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None) + x
+        x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None) + x # self-attn
         x = self.attn2(self.norm2(x), context=context) + x
         x = self.ff(self.norm3(x)) + x
         return x
@@ -320,14 +464,23 @@ class SpatialTransformer(nn.Module):
 
     def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
+        # 在有Prompt的情况下是有context的，此时是corss-attention
+
         if not isinstance(context, list):
             context = [context]
+
         b, c, h, w = x.shape
+
         x_in = x
+
+        # 进行groupnorm
         x = self.norm(x)
         if not self.use_linear:
             x = self.proj_in(x)
+
+        # 转换成b t c 序列
         x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
+
         if self.use_linear:
             x = self.proj_in(x)
         for i, block in enumerate(self.transformer_blocks):
