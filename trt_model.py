@@ -472,7 +472,8 @@ class trt_engine():
     def __init__(self, path_to_engine="./trt_dir/") -> None:
         import ctypes
         soFilePath = "./plugin/LayerNormPlugin/LayerNorm.so"
-        ctypes.cdll.LoadLibrary(soFilePath)
+        if os.path.exists(soFilePath):
+            ctypes.cdll.LoadLibrary(soFilePath)
 
 
 
