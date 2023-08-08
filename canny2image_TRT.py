@@ -185,7 +185,7 @@ class hackathon():
 
 
             self.model.control_scales = [strength * (0.825 ** float(12 - i)) for i in range(13)] if guess_mode else ([strength] * 13)  # Magic number. IDK why. Perhaps because 0.825**12<0.01 but 0.826**12>0.01
-            samples, intermediates = self.ddim_sampler.sample(ddim_steps, num_samples,
+            samples, intermediates = self.ddim_sampler.sample(ddim_steps-12, num_samples,
                                                         shape, cond, verbose=False, eta=eta,
                                                         unconditional_guidance_scale=scale,
                                                         unconditional_conditioning=un_cond)
@@ -331,12 +331,15 @@ class DDIMSampler(object):
         intermediates = {'x_inter': [img], 'pred_x0': [img]}
         time_range = reversed(range(0,timesteps)) if ddim_use_original_steps else np.flip(timesteps)
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
+
+        total_steps = int(total_steps)
         print(f"Running DDIM Sampling with {total_steps} timesteps")
 
         iterator = tqdm(time_range, desc='DDIM Sampler', total=total_steps)
 
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
+
             #ts = torch.full((b,), step, device=device, dtype=torch.long)
             ts = torch.full((b,), step, dtype=torch.long)
 

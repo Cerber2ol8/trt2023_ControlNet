@@ -470,6 +470,10 @@ class trt_unet(model):
 class trt_engine():
 
     def __init__(self, path_to_engine="./trt_dir/") -> None:
+        import ctypes
+        soFilePath = "./plugin/LayerNormPlugin/LayerNorm.so"
+        ctypes.cdll.LoadLibrary(soFilePath)
+
 
 
         # 创建engine

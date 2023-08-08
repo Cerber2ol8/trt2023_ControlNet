@@ -1,25 +1,37 @@
 import os
 import tensorrt as trt
+import ctypes
+
 
 
 onnx_dir = "./onnxsim_model/"
 engine_dir = "./trt_dir/"
+soFilePath = "./plugin/LayerNormPlugin/LayerNorm.so"
+
 
 H = 256
 W = 384
 h = H // 8
 w = W // 8
 
+
+ctypes.cdll.LoadLibrary(soFilePath)
+logger = trt.Logger(trt.Logger.ERROR)
+trt.init_libnvinfer_plugins(logger, '')
+
+
+
 def build_trt_engine(in_onnx, out_trt,inputs, is_fp16=True):
     #os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --verbose --buildOnly")
     if is_fp16:
-        os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --fp16 --buildOnly")
+        os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --plugins={soFilePath}  --fp16 --buildOnly --useCudaGraph")
     else:
-        os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --buildOnly")
+        os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --buildOnly --useCudaGraph")
 
 inputs_dict = {"FrozenCLIPEmbedder":"input_ids:1x77",
           "control_net":f"x_in:1x4x{h}x{w},h_in:1x3x{H}x{W},t_in:1,c_in:1x77x768,",
           "unet":f"x_in:1x4x{h}x{w},t_in:1,c_in:1x77x768,",
+          "unet_l":f"x_in:1x4x{h}x{w},t_in:1,c_in:1x77x768,",
           "vae_decoder":"z_in:1x4x32x48"}
 
 
