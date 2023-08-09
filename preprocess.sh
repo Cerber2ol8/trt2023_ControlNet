@@ -1,19 +1,20 @@
 echo "preprocess"
 
-cd /home/player/ControlNet/plugin
+cd plugin
 mkdir target
 
-cd /home/player/ControlNet/plugin/CustomLinearPlugin
+cd CustomLinearPlugin
 make clean
 make all
 mv CustomLinear.so ../target/CustomLinear.so
+cd ..
 
-cd /home/player/ControlNet/plugin/LayerNormPlugin
+cd LayerNormPlugin
 make clean
 make all
 mv LayerNorm.so ../target/LayerNorm.so
 
-cd /home/player/ControlNet
+cd ../..
 
 python3 torch2onnx.py
 
