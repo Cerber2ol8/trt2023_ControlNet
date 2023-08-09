@@ -471,11 +471,13 @@ class trt_engine():
 
     def __init__(self, path_to_engine="./trt_dir/") -> None:
         import ctypes
-        soFilePath = "./plugin/LayerNormPlugin/LayerNorm.so"
-        if os.path.exists(soFilePath):
-            ctypes.cdll.LoadLibrary(soFilePath)
 
-
+        
+        soFilePath = ["./plugin/LayerNormPlugin/LayerNorm.so",
+                      "./plugin/CustomLinearPlugin/CustomLinear.so"]
+        for path in soFilePath:
+            if os.path.exists(path):
+                ctypes.cdll.LoadLibrary(path)
 
         # 创建engine
         self.clip = model('clip', os.path.join(path_to_engine,"FrozenCLIPEmbedder.engine"))

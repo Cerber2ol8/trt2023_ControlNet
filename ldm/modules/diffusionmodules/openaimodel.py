@@ -659,7 +659,7 @@ class UNetModel(nn.Module):
         )
         self._feature_size += ch
 
-        print(self.middle_block)
+        #print(self.middle_block)
 
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:

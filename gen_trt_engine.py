@@ -6,31 +6,44 @@ import ctypes
 
 onnx_dir = "./onnxsim_model/"
 engine_dir = "./trt_dir/"
-soFilePath = "./plugin/LayerNormPlugin/LayerNorm.so"
-
+soFilePath = ["./plugin/LayerNormPlugin/LayerNorm.so","./plugin/CustomLinearPlugin/CustomLinear.so"]
+target = "/home/player/ControlNet/plugin/target/"
 usePlugin = False
+
 
 H = 256
 W = 384
 h = H // 8
 w = W // 8
 
-if os.path.exists(soFilePath):
-    ctypes.cdll.LoadLibrary(soFilePath)
-    usePlugin =True
+usePlugin =True
+verbose = True
+
 logger = trt.Logger(trt.Logger.ERROR)
-trt.init_libnvinfer_plugins(logger, '')
+
 
 
 
 def build_trt_engine(in_onnx, out_trt,inputs, is_fp16=True):
     #os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --verbose --buildOnly")
-    cmdString = f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --buildOnly --useCudaGraph"
+    cmdString = f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --skipInference --useCudaGraph"
     if is_fp16:
         cmdString += " --fp16"
 
     if usePlugin:
-        cmdString += "--plugins={soFilePath}"
+
+              
+        for path in soFilePath:
+            if os.path.exists(path):
+                ctypes.cdll.LoadLibrary(path)
+                cmdString += " --staticPlugins="  
+                cmdString += f"{path} "
+        trt.init_libnvinfer_plugins(logger, '')
+
+    if verbose:
+        cmdString += " --verbose"  
+
+
 
     os.system(cmdString)
 

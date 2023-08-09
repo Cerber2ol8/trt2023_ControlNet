@@ -12,7 +12,10 @@ image_log/
 
 onnx_models/
 onnxsim_model/
-plugin/
+plugin/AttentionPlugin
+plugin/crossAtenPlugin
+plugin/LayerNormPluginV1
+
 tmp/
 onnx_models_origin/
 onnx_models_old/
