@@ -247,7 +247,7 @@ def get_onnx(model):
                     z_in,
                     onnx_path+out,
                     export_params=True,
-                    verbose=True,
+                    #verbose=True,
                     opset_version=17,
                     do_constant_folding=True,
                     input_names=["z_in"],

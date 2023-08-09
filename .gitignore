@@ -26,7 +26,7 @@ trt_dir_opti/
 trt_dir_origin/
 tools/
 trt-samples-for-hackathon-cn/
-
+trt_img/*.jpg
 
 gradio_pose2image_private.py
 gradio_canny2image_private.py
