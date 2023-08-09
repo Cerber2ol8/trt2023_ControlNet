@@ -6,8 +6,10 @@ import ctypes
 
 onnx_dir = "./onnxsim_model/"
 engine_dir = "./trt_dir/"
-soFilePath = ["./plugin/LayerNormPlugin/LayerNorm.so","./plugin/CustomLinearPlugin/CustomLinear.so"]
-target = "/home/player/ControlNet/plugin/target/"
+
+soFilePath = ["./plugin/target/LayerNorm.so",
+              "./plugin/target/CustomLinear.so"]
+
 usePlugin = False
 
 
@@ -16,7 +18,7 @@ W = 384
 h = H // 8
 w = W // 8
 
-usePlugin =True
+usePlugin = False
 verbose = True
 
 logger = trt.Logger(trt.Logger.ERROR)
@@ -24,7 +26,7 @@ logger = trt.Logger(trt.Logger.ERROR)
 
 
 
-def build_trt_engine(in_onnx, out_trt,inputs, is_fp16=True):
+def build_trt_engine(in_onnx, out_trt, inputs, is_fp16=True):
     #os.system(f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --{quant} --verbose --buildOnly")
     cmdString = f"trtexec --onnx={in_onnx} --saveEngine={out_trt} --optShapes={inputs} --skipInference --useCudaGraph"
     if is_fp16:
