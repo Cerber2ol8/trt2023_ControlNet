@@ -1,16 +1,18 @@
 
 echo "preprocess"
 
-cd ./plugin/CustomLinearPlugin
+cd ./plugin
+mkdir target
+
+cd ./CustomLinearPlugin
 make all
 mv CustomLinear.so ../target/CustomLinear.so
 cd ..
 
-cd ./plugin/LayerNormPlugin
+cd ./LayerNormPlugin
 make all
 mv LayerNorm.so ../target/LayerNorm.so
-cd ..
-
+cd ../..
 
 
 python3 torch2onnx.py
