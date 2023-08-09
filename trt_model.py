@@ -473,8 +473,8 @@ class trt_engine():
         import ctypes
 
         
-        soFilePath = ["./plugin/LayerNormPlugin/LayerNorm.so",
-                      "./plugin/CustomLinearPlugin/CustomLinear.so"]
+        soFilePath = ["./plugin/target/LayerNorm.so",
+                      "./plugin/target/CustomLinear.so"]
         for path in soFilePath:
             if os.path.exists(path):
                 ctypes.cdll.LoadLibrary(path)
