@@ -3,14 +3,6 @@ echo "preprocess"
 cd plugin
 mkdir target
 
-if [ -f "target" ]
-then
-    echo 'exists'
-else
-    echo 'target path not exists'
-    exit 0
-fi
-
 
 cd CustomLinearPlugin
 make clean
