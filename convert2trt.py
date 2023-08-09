@@ -131,15 +131,17 @@ if __name__=="__main__":
     source = os.path.join(args.input_dir, args.model_name + ".onnx")
     target = os.path.join(args.save_dir, args.model_name + ".engine")
 
-    
+
     inputs = {}
     
     if args.model_name == "unet":
         inputs = unet_input
     elif args.model_name == "control_net":
         inputs = control_input
-
-
+    elif args.model_name == "vae_decoder":
+        inputs = control_input
+    elif args.model_name == "FrozenCLIPEmbedder":
+        inputs = control_input
 
 
     #   if args.dynamic:

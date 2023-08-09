@@ -3,6 +3,15 @@ echo "preprocess"
 cd plugin
 mkdir target
 
+if [ -f "target" ]
+then
+    echo 'exists'
+else
+    echo 'target path not exists'
+    exit 0
+fi
+
+
 cd CustomLinearPlugin
 make clean
 make all
@@ -14,7 +23,12 @@ make clean
 make all
 mv LayerNorm.so ../target/LayerNorm.so
 
+
+
 cd ../..
+
+
+
 
 python3 torch2onnx.py
 
@@ -33,3 +47,5 @@ python3 addPlugins.py --input_path ./onnxsim_model/unet.onnx --save_path ./onnxs
 
 python3 convert2trt.py --model_name unet
 python3 convert2trt.py --model_name control_net
+
+pyrhon3 gen_trt_engine.py
