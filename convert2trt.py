@@ -31,6 +31,11 @@ control_input = {"x_in" :   (1, 4, 32, 48),
                 "t_in" :   (1,),
                 "c_in" :   (1, 77, 768)}
 
+vae_input ={ "z_in" :   (1, 4, 32, 48)}
+
+
+clip_input = {"input_ids" :   (1, 77)}
+
 
 def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],use_fp16=False,set_int8_precision=False,verbose=False):
     
@@ -164,9 +169,9 @@ if __name__=="__main__":
     elif args.model_name == "control_net":
         inputs = control_input
     elif args.model_name == "vae_decoder":
-        inputs = control_input
+        inputs = vae_input
     elif args.model_name == "FrozenCLIPEmbedder":
-        inputs = control_input
+        inputs = clip_input
 
 
     #   if args.dynamic:

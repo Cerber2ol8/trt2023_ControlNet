@@ -53,14 +53,14 @@ if __name__=="__main__":
   parser.add_argument(
       "--input_path",
       type = str,
-      default="./target/MobileViT.onnx",
-      help="input onnx model path, default is ./target/MobileViT.onnx.")
+      default="./onnxsim_model/unet.onnx",
+      help="input onnx model path, default is onnxsim_model/unet.onnx")
 
   parser.add_argument(
       "--save_path",
       type=str,
-      default="./target/MobileViT_final.onnx",
-      help="save direction of onnx models,default is ./target.")
+      default="./onnxsim_model/unet.onnx",
+      help="save direction of onnx models,default is onnxsim_model/unet.onnx")
 
   args = parser.parse_args()
   print(args)
