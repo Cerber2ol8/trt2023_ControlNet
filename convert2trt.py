@@ -57,7 +57,7 @@ def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[]
     builder = trt.Builder(logger)
     network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
     config = builder.create_builder_config()
-    config.optimization = optimization
+    config.optimization_level = optimization
 
 
     profile = builder.create_optimization_profile()
