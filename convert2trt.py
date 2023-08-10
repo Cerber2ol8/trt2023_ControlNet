@@ -34,6 +34,10 @@ control_input = {"x_in" :   (1, 4, 32, 48),
 
 def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],use_fp16=False,set_int8_precision=False,verbose=False):
     
+    if os.path.exists(trtFile):
+        print("engine exists, skip build.")
+        exit()
+
     if verbose:
         logger = trt.Logger(trt.Logger.VERBOSE)#ERROR INFO  VERBOSE
     else:
@@ -81,7 +85,7 @@ def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[]
         if "LayerNorm" in layer.name:
             layer.precision = trt.float32
             print("reset precision to FP32: ",layer.name)
-        
+
     engineString = builder.build_serialized_network(network, config)
     if engineString == None:
         print("Failed building engine!")
@@ -90,6 +94,8 @@ def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[]
     with open(trtFile, 'wb') as f:
         f.write(engineString)
         print("Succeeded save engine!")
+
+
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='onnx convert to trt describe.')
 
@@ -167,6 +173,8 @@ if __name__=="__main__":
     #     encoder_in_shapes={'input':[(1,77,320),(4,3,256,256),(8,3,256,256)]}
     #   else:
     #     encoder_in_shapes={'input':[(args.batch,3,256,256),(args.batch,3,256,256),(args.batch,3,256,256)]}
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
 
 
 
