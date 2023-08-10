@@ -49,6 +49,7 @@ class model(object):
         self.tensors_output = {}
 
         self.nIO = self.engine.num_io_tensors
+        self.use_cuda_graph = False
 
 
         # 获取IO tensor的名称
@@ -238,6 +239,8 @@ class model(object):
         # for b in bufferD:
         #     cudart.cudaFree(b)
 
+        self.use_cuda_graph = True
+
 
 
 
@@ -331,8 +334,11 @@ class model(object):
             return self.bufferH[nInput:]
 
     def __call__(self, inputData, *args: Any, **kwds: Any) -> Any:
-        self.infer_origin(inputData)
-        return self.outputHost
+
+        if self.use_cuda_graph:
+            return self.infer_origin_cuda_graph(inputData)
+        else:
+            return self.infer_origin(inputData)
 
 
 class trt_clip(model):

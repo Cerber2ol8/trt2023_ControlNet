@@ -74,7 +74,7 @@ class hackathon():
     def decode(self, samples, num_samples):
         z = 1. / self.scale_factor * samples
         # x_samples_trt = self.vae([z])[0]
-        x_samples_trt = self.vae.infer_origin_cuda_graph([z])[0]
+        x_samples_trt = self.vae([z])[0]
 
         x_samples_trt = (einops.rearrange(x_samples_trt, 'b c h w -> b h w c') * 127.5 + 127.5).clip(0, 255).astype(np.uint8)
         results = [x_samples_trt[i] for i in range(num_samples)]
@@ -405,7 +405,7 @@ class DDIMSampler(object):
 
         # 输出为 13*tensor
         # control_trt = self.control_net.infer_origin([x_noisy, hint, t, cond_txt])
-        control_trt = self.control_net.infer_origin_cuda_graph([x_noisy, hint, t, cond_txt])
+        control_trt = self.control_net([x_noisy, hint, t, cond_txt])
 
 
         # 此处为 device->host 然后进行矩阵乘法

@@ -38,7 +38,7 @@ clip_input = {"input_ids" :   (1, 77)}
 
 
 def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],
-                       use_fp16=False,set_int8_precision=False,verbose=False,optimization=3):
+                       use_fp16=False,set_int8_precision=False,verbose=False,optimization=3,steams=-1):
     
     if os.path.exists(trtFile):
         print("engine exists, skip build.")
@@ -58,6 +58,9 @@ def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[]
     network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
     config = builder.create_builder_config()
     config.builder_optimization_level = optimization
+
+    if steams > 0:
+        config.max_aux_streams = steams
 
 
     profile = builder.create_optimization_profile()
@@ -141,7 +144,7 @@ if __name__=="__main__":
         help="use fp16, default is False.")
         
     parser.add_argument(
-        "--int8", default=False, action='store_true',
+        "--int8", action='store_true',
         help="use int8 , default is False.")
     
     parser.add_argument(
@@ -157,6 +160,11 @@ if __name__=="__main__":
         type=int,
         help="trt build optimization level, 0: build fast but optimization less, 5: build slow but optimization better, default is 3.")
     
+
+    parser.add_argument(
+    "--max_aux_streams", 
+    type=int, default=-1,
+    help="trt build optimization level, 0: build fast but optimization less, 5: build slow but optimization better, default is 3.")
 
 
     args = parser.parse_args()
