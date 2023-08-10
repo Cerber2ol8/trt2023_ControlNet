@@ -32,8 +32,13 @@ control_input = {"x_in" :   (1, 4, 32, 48),
                 "c_in" :   (1, 77, 768)}
 
 
-def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],use_fp16=False,set_int8_precision=False):
-    logger = trt.Logger(trt.Logger.VERBOSE)#ERROR INFO  VERBOSE
+def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],use_fp16=False,set_int8_precision=False,verbose=False):
+    
+    if verbose:
+        logger = trt.Logger(trt.Logger.VERBOSE)#ERROR INFO  VERBOSE
+    else:
+        logger = trt.Logger()
+
     trt.init_libnvinfer_plugins(logger, '')
     if len(pluginFileList)>0:
         for pluginFile in pluginFileList:
@@ -123,6 +128,15 @@ if __name__=="__main__":
     parser.add_argument(
         "--int8", default=False, action='store_true',
         help="use int8 , default is False.")
+    
+    parser.add_argument(
+        "--use_plugins", default=False, action='store_true',
+        help="use plugins , default is False.")
+    
+    parser.add_argument(
+        "--verbose", default=False, action='store_true',
+        help="verbose info, default is False.")
+
 
     args = parser.parse_args()
     print(args)
@@ -133,7 +147,12 @@ if __name__=="__main__":
 
 
     inputs = {}
-    
+    plugins = []
+
+    if args.use_plugins:
+        plugins = [os.path.join( "plugin/target", filename) for filename in os.listdir("plugin/target")]
+
+
     if args.model_name == "unet":
         inputs = unet_input
     elif args.model_name == "control_net":
@@ -149,9 +168,8 @@ if __name__=="__main__":
     #   else:
     #     encoder_in_shapes={'input':[(args.batch,3,256,256),(args.batch,3,256,256),(args.batch,3,256,256)]}
 
-    plugins = [os.path.join( "plugin/target", filename) for filename in os.listdir("plugin/target")]
 
 
     trt_builder_plugin(source,target,
                         inputs,pluginFileList=plugins,
-                        use_fp16=args.fp16,set_int8_precision=args.int8)
+                        use_fp16=args.fp16,set_int8_precision=args.int8,verbose=args.verbose)

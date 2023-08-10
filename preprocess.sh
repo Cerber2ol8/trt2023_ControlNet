@@ -37,7 +37,10 @@ python3 addPlugins.py --input_path ./onnxsim_model/unet.onnx --save_path ./onnxs
 
 
 
-python3 convert2trt.py --model_name unet
+python3 convert2trt.py --model_name unet --use_plugins
 python3 convert2trt.py --model_name control_net
+python3 convert2trt.py --model_name vae_decoder
+python3 convert2trt.py --model_name FrozenCLIPEmbedder
 
-pyrhon3 gen_trt_engine.py
+
+#python3 gen_trt_engine.py
