@@ -45,6 +45,8 @@ class model(object):
         self.outputHost = []
         self.nInput = 0
         self.nOutput = 0
+        self.tensors_input = {}
+        self.tensors_output = {}
 
         self.nIO = self.engine.num_io_tensors
 
@@ -128,6 +130,7 @@ class model(object):
 
         for k,v in tensors_input.items():
             context.set_input_shape(k,v)
+        self.tensors_input = tensors_input
 
 
 
@@ -144,7 +147,9 @@ class model(object):
         context = engine.create_execution_context()
         return context
     
-    def cuda_graph(self):
+    def config_cuda_graph(self):
+        cudart.cudaDeviceSynchronize()
+
         context = self.context
         lTensorName = self.lTensorName
         nInput = self.nInput
@@ -156,33 +161,41 @@ class model(object):
         # get a CUDA stream for CUDA graph and inference
         _, stream = cudart.cudaStreamCreate()
 
-        context.set_input_shape(lTensorName[0], [3, 4, 5])
-        for i in range(nIO):
-            print("[%2d]%s->" % (i, "Input " if i < nInput else "Output"), engine.get_tensor_dtype(lTensorName[i]), engine.get_tensor_shape(lTensorName[i]), context.get_tensor_shape(lTensorName[i]), lTensorName[i])
 
-        #data = np.arange(3 * 4 * 5, dtype=np.float32).reshape(3, 4, 5)
+        bufferD = []
         bufferH = []
-        #bufferH.append(np.ascontiguousarray(data))
+
+
+
+        for k,v in self.tensors_input.items():
+            data = np.zeros(v,dtype=trt.nptype(engine.get_tensor_dtype(k)))
+            bufferH.append(np.ascontiguousarray(data))
 
         for i in range(nInput, nIO):
             bufferH.append(np.empty(context.get_tensor_shape(lTensorName[i]), dtype=trt.nptype(engine.get_tensor_dtype(lTensorName[i]))))
-        bufferD = []
         for i in range(nIO):
             bufferD.append(cudart.cudaMalloc(bufferH[i].nbytes)[1])
 
+            
         # do inference before CUDA graph capture
         for i in range(nInput):
             cudart.cudaMemcpyAsync(bufferD[i], bufferH[i].ctypes.data, bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, stream)
         for i in range(nIO):
             context.set_tensor_address(lTensorName[i], int(bufferD[i]))
+
         context.execute_async_v3(stream)
+
         for i in range(nInput, nIO):
             cudart.cudaMemcpyAsync(bufferH[i].ctypes.data, bufferD[i], bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, stream)
+
+
+
 
         # CUDA Graph capture
         cudart.cudaStreamBeginCapture(stream, cudart.cudaStreamCaptureMode.cudaStreamCaptureModeGlobal)
         for i in range(nInput):
             cudart.cudaMemcpyAsync(bufferD[i], bufferH[i].ctypes.data, bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, stream)
+
         #for i in range(nIO):  # no need to reset the address if unchanged
         #    context.set_tensor_address(lTensorName[i], int(bufferD[i]))
         context.execute_async_v3(stream)
@@ -193,21 +206,37 @@ class model(object):
         cuda_version = int(torch.version.cuda[:2])
 
         if cuda_version < 12:
-            _, graphExe, _ = cudart.cudaGraphInstantiate(graph, b"", 0)  # for CUDA < 12
+            try:
+                _, graphExe, _ = cudart.cudaGraphInstantiate(graph, b"", 0)  # for CUDA < 12
+            except:
+                _, graphExe = cudart.cudaGraphInstantiate(graph, 0)
+
         else:
             _, graphExe = cudart.cudaGraphInstantiate(graph, 0)  # for CUDA >= 12
 
         # do inference with CUDA graph
-        bufferH[1] *= 0  # set output buffer as 0 to see the real output of inference
+        #bufferH[1] *= 0  # set output buffer as 0 to see the real output of inference
         cudart.cudaGraphLaunch(graphExe, stream)
         cudart.cudaStreamSynchronize(stream)
 
-        for i in range(nIO):
-            print(lTensorName[i])
-            print(bufferH[i])
+        print(f"model {self.name} warm up!")
+        for i in range(20):
+            cudart.cudaGraphLaunch(graphExe, stream)
+            cudart.cudaStreamSynchronize(stream)
 
-        for b in bufferD:
-            cudart.cudaFree(b)
+
+        self.stream = stream
+        self.graphExe = graphExe
+
+        self.bufferD = bufferD
+        self.bufferH = bufferH
+
+        # for i in range(nIO):
+        #     print(lTensorName[i])
+        #     print(bufferH[i])
+
+        # for b in bufferD:
+        #     cudart.cudaFree(b)
 
 
 
@@ -224,8 +253,8 @@ class model(object):
             for i in range(nInput):
 
                 data = inputData[i]
-                if len(data.shape)>1:
-                    data = data.reshape(-1)
+                # if len(data.shape)>1:
+                #     data = data.reshape(-1)
 
                 data = np.ascontiguousarray(data)
                 self.inputHost.append(data)
@@ -267,6 +296,39 @@ class model(object):
             self.inputHost = []
             return self.outputHost
 
+
+    def infer_origin_cuda_graph(self, inputData, out_gpu = False):
+        if self.context != None:
+            nInput = self.nInput
+            nOutput = self.nOutput
+            nIO = self.nIO
+            context = self.context
+            lTensorName = self.lTensorName
+
+
+
+            for i in range(nInput):
+
+                data = inputData[i]
+                if len(data.shape)>1:
+                    data = data.reshape(-1)
+
+                data = np.ascontiguousarray(data)
+                #self.bufferH[i].data = data.data
+
+                cudart.cudaMemcpy(self.bufferH[i].ctypes.data, data.ctypes.data, self.bufferH[i].nbytes, 
+                                       cudart.cudaMemcpyKind.cudaMemcpyHostToHost)
+
+            
+            # # 拷贝数据到device端
+            # for i in range(nInput):
+                # cudart.cudaMemcpyAsync(self.bufferD[i], self.bufferH[i].ctypes.data, self.bufferH[i].nbytes, 
+                #                        cudart.cudaMemcpyKind.cudaMemcpyHostToDevice,self.stream)
+
+            cudart.cudaGraphLaunch(self.graphExe, self.stream)
+            cudart.cudaStreamSynchronize(self.stream)
+
+            return self.bufferH[nInput:]
 
     def __call__(self, inputData, *args: Any, **kwds: Any) -> Any:
         self.infer_origin(inputData)
@@ -545,12 +607,14 @@ class trt_engine():
             if os.path.exists(path):
                 ctypes.cdll.LoadLibrary(path)
 
+        
+
         # 创建engine
         self.clip = model('clip', os.path.join(path_to_engine,"FrozenCLIPEmbedder.engine"))
         #self.clip = None
-        self.control = trt_control_net('control', os.path.join(path_to_engine,"control_net.engine"))
+        self.control = model('control', os.path.join(path_to_engine,"control_net.engine"))
         #self.unet = trt_unet('unet', os.path.join(path_to_engine,"unet.engine"),self.control)
-        self.unet = trt_unet('unet', os.path.join(path_to_engine,"unet.engine"))
+        self.unet = model('unet', os.path.join(path_to_engine,"unet.engine"))
         self.vae = model('vae', os.path.join(path_to_engine,"vae_decoder.engine"))
         #self.vae = None
 

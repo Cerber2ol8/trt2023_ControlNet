@@ -36,8 +36,8 @@ python3 addPlugins.py --input_path ./onnxsim_model/unet.onnx --save_path ./onnxs
 
 mkdir trt_dir
 
-python3 convert2trt.py --model_name unet --use_plugins --fp16 --optim_level 4 
-python3 convert2trt.py --model_name control_net --fp16 --optim_level 4 
-python3 convert2trt.py --model_name vae_decoder --fp16 --optim_level 4 
+python3 convert2trt.py --model_name unet --use_plugins --fp16 --optim_level 5 
+python3 convert2trt.py --model_name control_net --fp16 --optim_level 3 
+python3 convert2trt.py --model_name vae_decoder --fp16 --optim_level 5 
 python3 convert2trt.py --model_name FrozenCLIPEmbedder --optim_level 4 
 
