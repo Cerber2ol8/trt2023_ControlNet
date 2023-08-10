@@ -37,7 +37,8 @@ vae_input ={ "z_in" :   (1, 4, 32, 48)}
 clip_input = {"input_ids" :   (1, 77)}
 
 
-def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],use_fp16=False,set_int8_precision=False,verbose=False):
+def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],
+                       use_fp16=False,set_int8_precision=False,verbose=False,optimization=3):
     
     if os.path.exists(trtFile):
         print("engine exists, skip build.")
@@ -56,6 +57,9 @@ def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[]
     builder = trt.Builder(logger)
     network = builder.create_network(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
     config = builder.create_builder_config()
+    config.optimization = optimization
+
+
     profile = builder.create_optimization_profile()
     config.max_workspace_size = (1 << 30)*workspace
     parser = trt.OnnxParser(network, logger)
@@ -147,6 +151,12 @@ if __name__=="__main__":
     parser.add_argument(
         "--verbose", default=False, action='store_true',
         help="verbose info, default is False.")
+    
+    parser.add_argument(
+        "--optim_level", 
+        type=int,
+        help="trt build optimization level, 0: build fast but optimization less, 5: build slow but optimization better, default is 3.")
+    
 
 
     args = parser.parse_args()
@@ -185,4 +195,4 @@ if __name__=="__main__":
 
     trt_builder_plugin(source,target,
                         inputs,pluginFileList=plugins,
-                        use_fp16=args.fp16,set_int8_precision=args.int8,verbose=args.verbose)
+                        use_fp16=args.fp16,set_int8_precision=args.int8,verbose=args.verbose,optimization=args.optim_level)

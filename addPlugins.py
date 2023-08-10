@@ -57,32 +57,15 @@ def addAttentionPlugin(sourceOnnx,destinationOnnx):
 def findAttention(sourceOnnx):
     graph = gs.import_onnx(onnx.shape_inference.infer_shapes(onnx.load(sourceOnnx)))
     nlayer=0
+    self_attn = []
     for node in graph.nodes:
-        if node.op == 'Cast' and node.o().op=='MatMul':#
+        if node.op == 'CustomLinear' and node.o().op=='Cast': #self-attn
                 
+                if len(node.o().outpus) == 3:
+                     
+                     self_attn.append(node.name)
 
-                nChildNodes = len(node.outputs[0].outputs)
-
-                if(nChildNodes == 1): # attn2
-                     #print("attn1",node.op)
-                     
-                     pass
-                if(nChildNodes == 3): # attn1
-                     print("attn2",node.op)
-                     
-                     
-                     
-                     for i in range(nChildNodes):
-                          mut_node = node.outputs[0].outputs[i]
-                          inputs = mut_node.inputs
-
-                          #inputs = node.o().inputs
-                          print(mut_node.name)
-
-                          pass
-                     
-                     
-
+                
 
                 #print(node)
 
@@ -101,7 +84,7 @@ if __name__=="__main__":
 
     args = parser.parse_args()
 
-    addLayerNormPlugin(args.input_path, args.save_path)
+    #addLayerNormPlugin(args.input_path, args.save_path)
     
 
 

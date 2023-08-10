@@ -33,14 +33,11 @@ onnxsim onnx_models/FrozenCLIPEmbedder.onnx onnxsim_model/FrozenCLIPEmbedder.onn
 
 
 python3 addPlugins.py --input_path ./onnxsim_model/unet.onnx --save_path ./onnxsim_model/unet.onnx
-# python3 addPlugins.py --input_path ./onnxsim_model/control_net.onnx --save_path ./onnxsim_model/control_net.onnx
 
 mkdir trt_dir
 
-python3 convert2trt.py --model_name unet --use_plugins --fp16
-python3 convert2trt.py --model_name control_net --fp16
-python3 convert2trt.py --model_name vae_decoder --fp16
-python3 convert2trt.py --model_name FrozenCLIPEmbedder
+python3 convert2trt.py --model_name unet --use_plugins --fp16 --optim_level 4 
+python3 convert2trt.py --model_name control_net --fp16 --optim_level 4 
+python3 convert2trt.py --model_name vae_decoder --fp16 --optim_level 4 
+python3 convert2trt.py --model_name FrozenCLIPEmbedder --optim_level 4 
 
-
-#python3 gen_trt_engine.py
