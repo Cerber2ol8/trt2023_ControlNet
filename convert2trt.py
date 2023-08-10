@@ -133,7 +133,7 @@ if __name__=="__main__":
 
     parser.add_argument(
         "--fp16",
-        default=True, action='store_true',
+        default=False, action='store_true',
         help="use fp16, default is False.")
         
     parser.add_argument(

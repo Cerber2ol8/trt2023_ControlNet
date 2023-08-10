@@ -725,7 +725,7 @@ class UNetModel(nn.Module):
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self._feature_size += ch
 
-        print(self.output_blocks)
+        #print(self.output_blocks)
 
         self.out = nn.Sequential(
             normalization(ch),

@@ -143,6 +143,72 @@ class model(object):
         # 创建上下文
         context = engine.create_execution_context()
         return context
+    
+    def cuda_graph(self):
+        context = self.context
+        lTensorName = self.lTensorName
+        nInput = self.nInput
+        engine = self.engine
+        nIO = self.nIO
+
+
+
+        # get a CUDA stream for CUDA graph and inference
+        _, stream = cudart.cudaStreamCreate()
+
+        context.set_input_shape(lTensorName[0], [3, 4, 5])
+        for i in range(nIO):
+            print("[%2d]%s->" % (i, "Input " if i < nInput else "Output"), engine.get_tensor_dtype(lTensorName[i]), engine.get_tensor_shape(lTensorName[i]), context.get_tensor_shape(lTensorName[i]), lTensorName[i])
+
+        #data = np.arange(3 * 4 * 5, dtype=np.float32).reshape(3, 4, 5)
+        bufferH = []
+        #bufferH.append(np.ascontiguousarray(data))
+
+        for i in range(nInput, nIO):
+            bufferH.append(np.empty(context.get_tensor_shape(lTensorName[i]), dtype=trt.nptype(engine.get_tensor_dtype(lTensorName[i]))))
+        bufferD = []
+        for i in range(nIO):
+            bufferD.append(cudart.cudaMalloc(bufferH[i].nbytes)[1])
+
+        # do inference before CUDA graph capture
+        for i in range(nInput):
+            cudart.cudaMemcpyAsync(bufferD[i], bufferH[i].ctypes.data, bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, stream)
+        for i in range(nIO):
+            context.set_tensor_address(lTensorName[i], int(bufferD[i]))
+        context.execute_async_v3(stream)
+        for i in range(nInput, nIO):
+            cudart.cudaMemcpyAsync(bufferH[i].ctypes.data, bufferD[i], bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, stream)
+
+        # CUDA Graph capture
+        cudart.cudaStreamBeginCapture(stream, cudart.cudaStreamCaptureMode.cudaStreamCaptureModeGlobal)
+        for i in range(nInput):
+            cudart.cudaMemcpyAsync(bufferD[i], bufferH[i].ctypes.data, bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice, stream)
+        #for i in range(nIO):  # no need to reset the address if unchanged
+        #    context.set_tensor_address(lTensorName[i], int(bufferD[i]))
+        context.execute_async_v3(stream)
+        for i in range(nInput, nIO):
+            cudart.cudaMemcpyAsync(bufferH[i].ctypes.data, bufferD[i], bufferH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost, stream)
+        #cudart.cudaStreamSynchronize(stream)  # no need to synchronize within the CUDA graph capture
+        _, graph = cudart.cudaStreamEndCapture(stream)
+        cuda_version = int(torch.version.cuda[:2])
+
+        if cuda_version < 12:
+            _, graphExe, _ = cudart.cudaGraphInstantiate(graph, b"", 0)  # for CUDA < 12
+        else:
+            _, graphExe = cudart.cudaGraphInstantiate(graph, 0)  # for CUDA >= 12
+
+        # do inference with CUDA graph
+        bufferH[1] *= 0  # set output buffer as 0 to see the real output of inference
+        cudart.cudaGraphLaunch(graphExe, stream)
+        cudart.cudaStreamSynchronize(stream)
+
+        for i in range(nIO):
+            print(lTensorName[i])
+            print(bufferH[i])
+
+        for b in bufferD:
+            cudart.cudaFree(b)
+
 
 
 
