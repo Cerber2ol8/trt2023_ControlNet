@@ -382,8 +382,8 @@ class DDIMSampler(object):
 
         # current prediction for x_0
         if self.model.parameterization != "v":
-            #pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
-            pred_x0 = (torch.tensor(x) - sqrt_one_minus_at * e_t) / a_t.sqrt()
+            pred_x0 = (x - sqrt_one_minus_at * e_t) / a_t.sqrt()
+            # pred_x0 = (torch.tensor(x) - sqrt_one_minus_at * e_t) / a_t.sqrt()
         else:
             pred_x0 = self.model.predict_start_from_z_and_v(x, t, model_output)
 
