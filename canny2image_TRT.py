@@ -47,9 +47,9 @@ class hackathon():
         self.clip = self.trt_engine.clip
         self.vae = self.trt_engine.vae
 
-        # self.vae.config_cuda_graph()
-        # self.trt_engine.unet.config_cuda_graph()
-        # self.trt_engine.control.config_cuda_graph()
+        self.vae.config_cuda_graph()
+        self.trt_engine.unet.config_cuda_graph()
+        self.trt_engine.control.config_cuda_graph()
         
         
 

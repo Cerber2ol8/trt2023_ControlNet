@@ -100,7 +100,7 @@ def get_onnx(model):
             _model = temp_model
             x_in = torch.randn(1,4,H//8, W //8, dtype=torch.float32).to("cuda")
             h_in = torch.randn(1,3,H, W, dtype=torch.float32).to("cuda")
-            t_in = torch.zeros(1, dtype=torch.int64).to("cuda")
+            t_in = torch.zeros(1, dtype=torch.int32).to("cuda")
             c_in = torch.randn(1,77,768, dtype=torch.float32).to("cuda")
 
 
@@ -165,7 +165,7 @@ def get_onnx(model):
 
 
             x_in = torch.randn(1,4,h,w, dtype=torch.float32).to("cuda")
-            t_in = torch.zeros(1, dtype=torch.int64).to("cuda")
+            t_in = torch.zeros(1, dtype=torch.int32).to("cuda")
             c_in = torch.randn(1,77,768, dtype=torch.float32).to("cuda")
 
             inputs = []
