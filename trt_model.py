@@ -89,10 +89,10 @@ class model(object):
             self.nOutput = 13
 
             #---- input tensor shape of control ----
-            tensors_input = {"x_in" :   (1, 4, 32, 48),
-                            "h_in" :   (1, 3, 256, 384),
-                            "t_in" :   (1,),
-                            "c_in" :   (1, 77, 768)}
+            tensors_input = {"x_in" :   (2, 4, 32, 48),
+                            "h_in" :   (2, 3, 256, 384),
+                            "t_in" :   (2,),
+                            "c_in" :   (2, 77, 768)}
 
 
         elif name == 'unet':
@@ -101,23 +101,23 @@ class model(object):
 
 
             #---- input tensor shape of unet ----
-            tensors_input = {"x_in" :   (1, 4, 32, 48),
-                            "t_in" :   (1,),
-                            "c_in" :   (1, 77, 768),
+            tensors_input = {"x_in" :   (2, 4, 32, 48),
+                            "t_in" :   (2,),
+                            "c_in" :   (2, 77, 768),
 
-                            "cl_0" :   (1, 320, 32, 48),
-                            "cl_1" :   (1, 320, 32, 48),
-                            "cl_2" :   (1, 320, 32, 48),
-                            "cl_3" :   (1, 320, 16, 24),
-                            "cl_4" :   (1, 640, 16, 24),
-                            "cl_5" :   (1, 640, 16, 24),
-                            "cl_6" :   (1, 640, 8, 12),
-                            "cl_7" :   (1, 1280, 8, 12),
-                            "cl_8" :   (1, 1280, 8, 12),
-                            "cl_9" :   (1, 1280, 4, 6),
-                            "cl_10" :   (1, 1280, 4, 6),
-                            "cl_11" :   (1, 1280, 4, 6),
-                            "cl_12" :   (1, 1280, 4, 6)}
+                            "cl_0" :   (2, 320, 32, 48),
+                            "cl_1" :   (2, 320, 32, 48),
+                            "cl_2" :   (2, 320, 32, 48),
+                            "cl_3" :   (2, 320, 16, 24),
+                            "cl_4" :   (2, 640, 16, 24),
+                            "cl_5" :   (2, 640, 16, 24),
+                            "cl_6" :   (2, 640, 8, 12),
+                            "cl_7" :   (2, 1280, 8, 12),
+                            "cl_8" :   (2, 1280, 8, 12),
+                            "cl_9" :   (2, 1280, 4, 6),
+                            "cl_10" :   (2, 1280, 4, 6),
+                            "cl_11" :   (2, 1280, 4, 6),
+                            "cl_12" :   (2, 1280, 4, 6)}
 
         elif name == 'vae':
             self.nInput = 1
@@ -242,6 +242,48 @@ class model(object):
         self.use_cuda_graph = True
 
 
+    def infer(self, inputData):
+
+        nInput = self.nInput
+        nOutput = self.nOutput
+        nIO = self.nIO
+        context = self.context
+        lTensorName = self.lTensorName
+
+        buffD = []
+        buffH = []
+
+        for i in range(nInput):
+            data = inputData[i]
+            data = np.ascontiguousarray(data)
+            buffH.append(data)
+            buffD.append(cudart.cudaMalloc(data.nbytes)[1])
+            context.set_tensor_address(lTensorName[i], buffD[i])
+
+        for i in range(nInput,nIO):
+            buffH.append(np.empty(self.context.get_tensor_shape(lTensorName[i]),
+                                    trt.nptype(self.engine.get_tensor_dtype(lTensorName[i]))))
+            buffD.append(cudart.cudaMalloc(buffH[i].nbytes)[1])
+            context.set_tensor_address(lTensorName[i], buffD[i])
+
+        # 拷贝数据到device端
+        for i in range(nInput):
+            cudart.cudaMemcpy(buffD[i], buffH[i].ctypes.data, buffH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+        
+        # 执行推理计算
+        context.execute_async_v3(0)
+
+        # 拷贝结果到host端
+        for i in range(nInput,nIO):
+            cudart.cudaMemcpy(buffH[i].ctypes.data, buffD[i], buffH[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)    
+
+        # 拷贝结果到host端
+        for b in buffD:
+            # 释放输出显存
+            cudart.cudaFree(b)
+
+        return buffH[nInput:]
+
 
 
     def infer_origin(self, inputData, out_gpu = False):
@@ -338,268 +380,268 @@ class model(object):
         if self.use_cuda_graph:
             return self.infer_origin_cuda_graph(inputData)
         else:
-            return self.infer_origin(inputData)
+            return self.infer(inputData)
 
 
-class trt_clip(model):
-    def __init__(self, name, engine_file_path) -> None:
-        super().__init__(name, engine_file_path)
+# class trt_clip(model):
+#     def __init__(self, name, engine_file_path) -> None:
+#         super().__init__(name, engine_file_path)
 
-        self.outputData = None
+#         self.outputData = None
 
-        # 定义输入输出
-        self.inputHost0 = np.zeros(self.context.get_tensor_shape(self.lTensorName[0]),
-                                trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[0])))
-        self.outputHost0 =  np.zeros(self.context.get_tensor_shape(self.lTensorName[1]),
-                                trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[1])))
-        self.outputHost1 =  np.zeros(self.context.get_tensor_shape(self.lTensorName[2]),
-                                trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[2])))
+#         # 定义输入输出
+#         self.inputHost0 = np.zeros(self.context.get_tensor_shape(self.lTensorName[0]),
+#                                 trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[0])))
+#         self.outputHost0 =  np.zeros(self.context.get_tensor_shape(self.lTensorName[1]),
+#                                 trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[1])))
+#         self.outputHost1 =  np.zeros(self.context.get_tensor_shape(self.lTensorName[2]),
+#                                 trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[2])))
 
-        # device端申请内存
-        self.inputDevice = cudart.cudaMalloc(self.inputHost0.nbytes)[1]
-        self.outputDevice0 = cudart.cudaMalloc(self.outputHost0.nbytes)[1]
-        self.outputDevice1 = cudart.cudaMalloc(self.outputHost1.nbytes)[1]
+#         # device端申请内存
+#         self.inputDevice = cudart.cudaMalloc(self.inputHost0.nbytes)[1]
+#         self.outputDevice0 = cudart.cudaMalloc(self.outputHost0.nbytes)[1]
+#         self.outputDevice1 = cudart.cudaMalloc(self.outputHost1.nbytes)[1]
 
-        # 绑定device端地址
-        self.context.set_tensor_address(self.lTensorName[0], self.inputDevice)
-        self.context.set_tensor_address(self.lTensorName[1], self.outputDevice0)
-        self.context.set_tensor_address(self.lTensorName[2], self.outputDevice1)
+#         # 绑定device端地址
+#         self.context.set_tensor_address(self.lTensorName[0], self.inputDevice)
+#         self.context.set_tensor_address(self.lTensorName[1], self.outputDevice0)
+#         self.context.set_tensor_address(self.lTensorName[2], self.outputDevice1)
 
 
-    def infer(self, input_ids : np.array):
+#     def infer(self, input_ids : np.array):
 
-        input_ids = np.ascontiguousarray(input_ids)
-        cudart.cudaMemcpy(self.inputDevice, input_ids.ctypes.data, input_ids.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#         input_ids = np.ascontiguousarray(input_ids)
+#         cudart.cudaMemcpy(self.inputDevice, input_ids.ctypes.data, input_ids.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
 
-        # 执行推理计算
-        self.context.execute_async_v3(0)
+#         # 执行推理计算
+#         self.context.execute_async_v3(0)
 
-        cudart.cudaMemcpy(self.outputHost0.ctypes.data, self.outputDevice0, self.outputHost0.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
-        #self.cudaFree()
+#         cudart.cudaMemcpy(self.outputHost0.ctypes.data, self.outputDevice0, self.outputHost0.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
+#         #self.cudaFree()
 
-        return self.outputHost0
+#         return self.outputHost0
 
-    def __call__(self, input_ids : np.array):
+#     def __call__(self, input_ids : np.array):
 
-        return self.infer(input_ids=input_ids)
+#         return self.infer(input_ids=input_ids)
 
 
-    def cudaFree(self):
-        # 释放device内存
+#     def cudaFree(self):
+#         # 释放device内存
 
-        if self.inputDevice != None:
-            cudart.cudaFree(self.inputDevice)
+#         if self.inputDevice != None:
+#             cudart.cudaFree(self.inputDevice)
 
-        if self.outputDevice0 != None:
-            cudart.cudaFree(self.outputDevice0)
+#         if self.outputDevice0 != None:
+#             cudart.cudaFree(self.outputDevice0)
 
-        if self.outputDevice1 != None:
-            cudart.cudaFree(self.outputDevice1)
+#         if self.outputDevice1 != None:
+#             cudart.cudaFree(self.outputDevice1)
 
 
 
 
 
-class trt_control_net(model):
-    def __init__(self, name, engine_file_path) -> None:
-        super().__init__(name, engine_file_path)
+# class trt_control_net(model):
+#     def __init__(self, name, engine_file_path) -> None:
+#         super().__init__(name, engine_file_path)
 
 
 
 
-    def infer(self, inputData):
-        if self.context != None:
-            nInput = self.nInput
-            nOutput = self.nOutput
+#     def infer(self, inputData):
+#         if self.context != None:
+#             nInput = self.nInput
+#             nOutput = self.nOutput
 
-            self.outputHost = []
+#             self.outputHost = []
 
-            # device端申请内存和设置GPU 指针
+#             # device端申请内存和设置GPU 指针
 
-            for i in range(nInput):
+#             for i in range(nInput):
 
-                data = inputData[i]
-                #如果是地址
-                if(i == 1 or i == 3):
-                    self.inputHost.append(data)
-                    self.inputDevice.append(data)
-                    self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
-                else:
-                    if len(data.shape)>1:
-                        data = data.reshape(-1)
+#                 data = inputData[i]
+#                 #如果是地址
+#                 if(i == 1 or i == 3):
+#                     self.inputHost.append(data)
+#                     self.inputDevice.append(data)
+#                     self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
+#                 else:
+#                     if len(data.shape)>1:
+#                         data = data.reshape(-1)
 
-                    data = np.ascontiguousarray(data)
-                    self.inputHost.append(data)
-                    self.inputDevice.append(cudart.cudaMalloc(data.nbytes)[1])
-                    self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
+#                     data = np.ascontiguousarray(data)
+#                     self.inputHost.append(data)
+#                     self.inputDevice.append(cudart.cudaMalloc(data.nbytes)[1])
+#                     self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
 
 
-            for i in range(nOutput):
-                outputHost =  np.empty(self.context.get_tensor_shape(self.lTensorName[nInput+i]),
-                                       trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[nInput+i])))
-                self.outputHost.append(outputHost)
+#             for i in range(nOutput):
+#                 outputHost =  np.empty(self.context.get_tensor_shape(self.lTensorName[nInput+i]),
+#                                        trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[nInput+i])))
+#                 self.outputHost.append(outputHost)
 
 
-                self.outputDevice.append(cudart.cudaMalloc(outputHost.nbytes)[1])
-                self.context.set_tensor_address(self.lTensorName[nInput+i], self.outputDevice[i])
+#                 self.outputDevice.append(cudart.cudaMalloc(outputHost.nbytes)[1])
+#                 self.context.set_tensor_address(self.lTensorName[nInput+i], self.outputDevice[i])
 
-            # 拷贝数据到device端
+#             # 拷贝数据到device端
 
-            for i in range(len(self.inputDevice)):
-                if(i != 1 and i != 3):
-                    cudart.cudaMemcpy(self.inputDevice[i], self.inputHost[i].ctypes.data, self.inputHost[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#             for i in range(len(self.inputDevice)):
+#                 if(i != 1 and i != 3):
+#                     cudart.cudaMemcpy(self.inputDevice[i], self.inputHost[i].ctypes.data, self.inputHost[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
 
-            # 执行推理计算
-            self.context.execute_async_v3(0)
+#             # 执行推理计算
+#             self.context.execute_async_v3(0)
 
 
-            # 释放输入显存
-            for i in range(len(self.inputDevice)):
-                if(i != 1 and i != 3):
-                    cudart.cudaFree(self.inputDevice[i])
+#             # 释放输入显存
+#             for i in range(len(self.inputDevice)):
+#                 if(i != 1 and i != 3):
+#                     cudart.cudaFree(self.inputDevice[i])
 
-            # 拷贝结果到host端
-            for outputDevice,outputHost in zip(self.outputDevice,self.outputHost):
-                cudart.cudaMemcpy(outputHost.ctypes.data, outputDevice, outputHost.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
-                # 释放输出显存
-                cudart.cudaFree(outputDevice)
+#             # 拷贝结果到host端
+#             for outputDevice,outputHost in zip(self.outputDevice,self.outputHost):
+#                 cudart.cudaMemcpy(outputHost.ctypes.data, outputDevice, outputHost.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
+#                 # 释放输出显存
+#                 cudart.cudaFree(outputDevice)
 
 
 
-            self.inputDevice = []
-            self.outputDevice = []
-            self.inputHost = []
-            return self.outputHost
+#             self.inputDevice = []
+#             self.outputDevice = []
+#             self.inputHost = []
+#             return self.outputHost
 
 
-    def freeCuda_output(self):
-        # 释放输出显存
-        for i in range(len(self.outputDevice)):
-            cudart.cudaFree(self.outputDevice[i])
-        self.outputDevice.clear()
-        self.outputHost.clear()
+#     def freeCuda_output(self):
+#         # 释放输出显存
+#         for i in range(len(self.outputDevice)):
+#             cudart.cudaFree(self.outputDevice[i])
+#         self.outputDevice.clear()
+#         self.outputHost.clear()
 
-    def freeCuda_input(self):
-        # 释放输入显存
-        for i in range(len(self.inputDevice)):
-            cudart.cudaFree(self.inputDevice[i])
-        self.inputDevice.clear()
-        self.inputHost.clear()
+#     def freeCuda_input(self):
+#         # 释放输入显存
+#         for i in range(len(self.inputDevice)):
+#             cudart.cudaFree(self.inputDevice[i])
+#         self.inputDevice.clear()
+#         self.inputHost.clear()
 
-    def freeCuda(self):
+#     def freeCuda(self):
 
-        cudart.cudaFree(self.noisyDevice)
-        cudart.cudaFree(self.condDevice)
-        cudart.cudaFree(self.tDevice)
-        cudart.cudaFree(self.hintDevice)
-        # cudart.cudaFree(self.ucondDevice)
-        # cudart.cudaFree(self.uhintDevice)
-        for i in range(len(self.inputDevice)):
-            cudart.cudaFree(self.inputDevice[i])
-        self.inputDevice.clear()
-        self.freeCuda_output()
-        self.is_malloc = False
+#         cudart.cudaFree(self.noisyDevice)
+#         cudart.cudaFree(self.condDevice)
+#         cudart.cudaFree(self.tDevice)
+#         cudart.cudaFree(self.hintDevice)
+#         # cudart.cudaFree(self.ucondDevice)
+#         # cudart.cudaFree(self.uhintDevice)
+#         for i in range(len(self.inputDevice)):
+#             cudart.cudaFree(self.inputDevice[i])
+#         self.inputDevice.clear()
+#         self.freeCuda_output()
+#         self.is_malloc = False
 
 
-    def __call__(self, inputData, *args: Any, **kwds: Any):
-        return self.infer(inputData)
+#     def __call__(self, inputData, *args: Any, **kwds: Any):
+#         return self.infer(inputData)
 
 
-class trt_unet(model):
-    def __init__(self, name, engine_file_path) -> None:
-        super().__init__(name, engine_file_path)
+# class trt_unet(model):
+#     def __init__(self, name, engine_file_path) -> None:
+#         super().__init__(name, engine_file_path)
 
 
-    def infer_origin(self, control_input):
+#     def infer_origin(self, control_input):
 
-        # 拷贝input数据到device
-        # cudart.cudaMemcpy(self.noisyDevice, x.ctypes.data, x.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
-        # cudart.cudaMemcpy(self.tDevice, t.ctypes.data, t.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
-        # cudart.cudaMemcpy(self.condDevice, c.ctypes.data, c.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#         # 拷贝input数据到device
+#         # cudart.cudaMemcpy(self.noisyDevice, x.ctypes.data, x.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#         # cudart.cudaMemcpy(self.tDevice, t.ctypes.data, t.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#         # cudart.cudaMemcpy(self.condDevice, c.ctypes.data, c.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
 
-        for i in range(self.nInput):
-            data = np.ascontiguousarray(control_input[i])
-            cudart.cudaMemcpy(self.inputDevice[i], data.ctypes.data, data.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#         for i in range(self.nInput):
+#             data = np.ascontiguousarray(control_input[i])
+#             cudart.cudaMemcpy(self.inputDevice[i], data.ctypes.data, data.nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
 
-        # 执行推理计算
-        self.context.execute_async_v3(0)
+#         # 执行推理计算
+#         self.context.execute_async_v3(0)
 
 
-        # 拷贝结果到host端
-        cudart.cudaMemcpy(self.erpHost.ctypes.data, self.erpDevice, self.erpHost.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
-        return self.erpHost
+#         # 拷贝结果到host端
+#         cudart.cudaMemcpy(self.erpHost.ctypes.data, self.erpDevice, self.erpHost.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
+#         return self.erpHost
 
-    def infer(self, inputData):
-        if self.context != None:
-            nInput = self.nInput
-            nOutput = self.nOutput
+#     def infer(self, inputData):
+#         if self.context != None:
+#             nInput = self.nInput
+#             nOutput = self.nOutput
 
-            self.outputHost = []
+#             self.outputHost = []
 
-            # device端申请内存和设置GPU 指针
+#             # device端申请内存和设置GPU 指针
 
-            for i in range(nInput):
+#             for i in range(nInput):
 
-                data = inputData[i]
-                #如果是地址
-                if(i == 2):
-                    self.inputDevice.append(data)
-                    self.inputHost.append(data)
-                    self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
-                else:
-                    if len(data.shape)>1:
-                        data = data.reshape(-1)
+#                 data = inputData[i]
+#                 #如果是地址
+#                 if(i == 2):
+#                     self.inputDevice.append(data)
+#                     self.inputHost.append(data)
+#                     self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
+#                 else:
+#                     if len(data.shape)>1:
+#                         data = data.reshape(-1)
 
-                    data = np.ascontiguousarray(data)
-                    self.inputHost.append(data)
-                    self.inputDevice.append(cudart.cudaMalloc(data.nbytes)[1])
-                    self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
+#                     data = np.ascontiguousarray(data)
+#                     self.inputHost.append(data)
+#                     self.inputDevice.append(cudart.cudaMalloc(data.nbytes)[1])
+#                     self.context.set_tensor_address(self.lTensorName[i], self.inputDevice[i])
 
 
-            for i in range(nOutput):
-                outputHost =  np.empty(self.context.get_tensor_shape(self.lTensorName[nInput+i]),
-                                       trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[nInput+i])))
-                self.outputHost.append(outputHost)
+#             for i in range(nOutput):
+#                 outputHost =  np.empty(self.context.get_tensor_shape(self.lTensorName[nInput+i]),
+#                                        trt.nptype(self.engine.get_tensor_dtype(self.lTensorName[nInput+i])))
+#                 self.outputHost.append(outputHost)
 
 
-                self.outputDevice.append(cudart.cudaMalloc(outputHost.nbytes)[1])
-                self.context.set_tensor_address(self.lTensorName[nInput+i], self.outputDevice[i])
+#                 self.outputDevice.append(cudart.cudaMalloc(outputHost.nbytes)[1])
+#                 self.context.set_tensor_address(self.lTensorName[nInput+i], self.outputDevice[i])
 
-            # 拷贝数据到device端
-            for i in range(len(self.inputDevice)):
-                if(i != 2):
-                    cudart.cudaMemcpy(self.inputDevice[i], self.inputHost[i].ctypes.data, self.inputHost[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
+#             # 拷贝数据到device端
+#             for i in range(len(self.inputDevice)):
+#                 if(i != 2):
+#                     cudart.cudaMemcpy(self.inputDevice[i], self.inputHost[i].ctypes.data, self.inputHost[i].nbytes, cudart.cudaMemcpyKind.cudaMemcpyHostToDevice)
 
-            # 执行推理计算
-            self.context.execute_async_v3(0)
+#             # 执行推理计算
+#             self.context.execute_async_v3(0)
 
 
-            # 释放输入显存
-            for i in range(len(self.inputDevice)):
-                if(i != 2):
-                    cudart.cudaFree(self.inputDevice[i])
+#             # 释放输入显存
+#             for i in range(len(self.inputDevice)):
+#                 if(i != 2):
+#                     cudart.cudaFree(self.inputDevice[i])
 
-            # 拷贝结果到host端
-            for outputDevice,outputHost in zip(self.outputDevice,self.outputHost):
-                cudart.cudaMemcpy(outputHost.ctypes.data, outputDevice, outputHost.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
-                # 释放输出显存
-                cudart.cudaFree(outputDevice)
+#             # 拷贝结果到host端
+#             for outputDevice,outputHost in zip(self.outputDevice,self.outputHost):
+#                 cudart.cudaMemcpy(outputHost.ctypes.data, outputDevice, outputHost.nbytes, cudart.cudaMemcpyKind.cudaMemcpyDeviceToHost)
+#                 # 释放输出显存
+#                 cudart.cudaFree(outputDevice)
 
 
 
-            self.inputDevice = []
-            self.outputDevice = []
-            self.inputHost = []
-            return self.outputHost
+#             self.inputDevice = []
+#             self.outputDevice = []
+#             self.inputHost = []
+#             return self.outputHost
 
 
 
 
-    def __call__(self, control_input, *args: Any, **kwds: Any) -> Any:
-        return self.infer(control_input)
+#     def __call__(self, control_input, *args: Any, **kwds: Any) -> Any:
+#         return self.infer(control_input)
 
-    def freeCuda(self):
-        cudart.cudaFree(self.erpDevice)
+#     def freeCuda(self):
+#         cudart.cudaFree(self.erpDevice)
 
 class trt_engine():
 
@@ -619,8 +661,10 @@ class trt_engine():
         self.clip = model('clip', os.path.join(path_to_engine,"FrozenCLIPEmbedder.engine"))
         #self.clip = None
         self.control = model('control', os.path.join(path_to_engine,"control_net.engine"))
+
         #self.unet = trt_unet('unet', os.path.join(path_to_engine,"unet.engine"),self.control)
         self.unet = model('unet', os.path.join(path_to_engine,"unet.engine"))
+
         self.vae = model('vae', os.path.join(path_to_engine,"vae_decoder.engine"))
         #self.vae = None
 

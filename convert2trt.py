@@ -8,33 +8,33 @@ import onnx_graphsurgeon as gs
 #from calibrator import MobileVitCalibrator
 
 
-unet_input = {"x_in" :   (1, 4, 32, 48),
-            "t_in" :   (1,),
-            "c_in" :   (1, 77, 768),
+unet_input = {"x_in" :   [(2, 4, 32, 48),(2, 4, 32, 48),(8, 4, 32, 48),],
+            "t_in" :   [(2,),(2,),(8,),],
+            "c_in" :   [(2, 77, 768),(2, 77, 768),(8, 77, 768),],
 
-            "cl_0" :   (1, 320, 32, 48),
-            "cl_1" :   (1, 320, 32, 48),
-            "cl_2" :   (1, 320, 32, 48),
-            "cl_3" :   (1, 320, 16, 24),
-            "cl_4" :   (1, 640, 16, 24),
-            "cl_5" :   (1, 640, 16, 24),
-            "cl_6" :   (1, 640, 8, 12),
-            "cl_7" :   (1, 1280, 8, 12),
-            "cl_8" :   (1, 1280, 8, 12),
-            "cl_9" :   (1, 1280, 4, 6),
-            "cl_10" :   (1, 1280, 4, 6),
-            "cl_11" :   (1, 1280, 4, 6),
-            "cl_12" :   (1, 1280, 4, 6)}
+            "cl_0" :   [(2, 320, 32, 48),(2, 320, 32, 48),(8, 320, 32, 48),],
+            "cl_1" :   [(2, 320, 32, 48),(2, 320, 32, 48),(8, 320, 32, 48),],
+            "cl_2" :   [(2, 320, 32, 48),(2, 320, 32, 48),(8, 320, 32, 48),],
+            "cl_3" :   [(2, 320, 16, 24),(2, 320, 16, 24),(8, 320, 16, 24),],
+            "cl_4" :   [(2, 640, 16, 24),(2, 640, 16, 24),(8, 640, 16, 24),],
+            "cl_5" :   [(2, 640, 16, 24),(2, 640, 16, 24),(8, 640, 16, 24),],
+            "cl_6" :   [(2, 640, 8, 12),(2, 640, 8, 12),(8, 640, 8, 12),],
+            "cl_7" :   [(2, 1280, 8, 12),(2, 1280, 8, 12),(8, 1280, 8, 12),],
+            "cl_8" :   [(2, 1280, 8, 12),(2, 1280, 8, 12),(8, 1280, 8, 12),],
+            "cl_9" :   [(2, 1280, 4, 6),(2, 1280, 4, 6),(8, 1280, 4, 6),],
+            "cl_10" :   [(2, 1280, 4, 6),(2, 1280, 4, 6),(8, 1280, 4, 6),],
+            "cl_11" :   [(2, 1280, 4, 6),(2, 1280, 4, 6),(8, 1280, 4, 6),],
+            "cl_12" :   [(2, 1280, 4, 6),(2, 1280, 4, 6),(8, 1280, 4, 6)]}
 
-control_input = {"x_in" :   (1, 4, 32, 48),
-                "h_in" :   (1, 3, 256, 384),
-                "t_in" :   (1,),
-                "c_in" :   (1, 77, 768)}
+control_input = {"x_in" :   [(2, 4, 32, 48),(2, 4, 32, 48),(8, 4, 32, 48)],
+                "h_in" :   [(2, 3, 256, 384),(2, 4, 32, 48),(8, 4, 32, 48)],
+                "t_in" :   [(2,),(2, 4, 32, 48),(2, 4, 32, 48),(8, 4, 32, 48)],
+                "c_in" :   [(2, 77, 768),(2, 77, 768),(8, 77, 768)]}
 
-vae_input ={ "z_in" :   (1, 4, 32, 48)}
+vae_input ={ "z_in" :   [(1, 4, 32, 48),(1, 4, 32, 48),(1, 4, 32, 48)]}
 
 
-clip_input = {"input_ids" :   (1, 77)}
+clip_input = {"input_ids" :   [(1, 77),(1, 77),(1, 77)]}
 
 
 def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[],
@@ -81,12 +81,13 @@ def trt_builder_plugin(onnxFile,trtFile,in_shapes,workspace=22,pluginFileList=[]
         inputTensor = network.get_input(i)
         name=inputTensor.name
         if name in in_shapes:
-            #profile.set_shape(name, in_shapes[name][0],in_shapes[name][1],in_shapes[name][2])
-            profile.set_shape(name, in_shapes[name],in_shapes[name],in_shapes[name])
+            profile.set_shape(name, in_shapes[name][0],in_shapes[name][1],in_shapes[name][2])
+            # profile.set_shape(name, in_shapes[name],in_shapes[name],in_shapes[name])
         
     config.add_optimization_profile(profile)
     if use_fp16:
         config.set_flag(trt.BuilderFlag.FP16)
+
     if set_int8_precision:
         config.set_flag(trt.BuilderFlag.INT8)
         #config.int8_calibrator=MobileVitCalibrator()
@@ -158,6 +159,7 @@ if __name__=="__main__":
     parser.add_argument(
         "--optim_level", 
         type=int,
+        default=3,
         help="trt build optimization level, 0: build fast but optimization less, 5: build slow but optimization better, default is 3.")
     
 

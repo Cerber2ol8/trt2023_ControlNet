@@ -24,6 +24,10 @@ from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, mak
 
 from cuda import cudart
 
+import asyncio
+
+
+
 class hackathon():
 
     def initialize(self):
@@ -43,9 +47,9 @@ class hackathon():
         self.clip = self.trt_engine.clip
         self.vae = self.trt_engine.vae
 
-        self.vae.config_cuda_graph()
+        # self.vae.config_cuda_graph()
         # self.trt_engine.unet.config_cuda_graph()
-        self.trt_engine.control.config_cuda_graph()
+        # self.trt_engine.control.config_cuda_graph()
         
         
 
@@ -103,7 +107,7 @@ class hackathon():
             detected_map = self.apply_canny(img, low_threshold, high_threshold)
             detected_map = HWC3(detected_map)
 
-            control = torch.from_numpy(detected_map.copy()).float().cuda() / 255.0
+            control = torch.from_numpy(detected_map.copy()).float() / 255.0
             control = torch.stack([control for _ in range(num_samples)], dim=0)
             control = einops.rearrange(control, 'b h w c -> b c h w').clone()
 
@@ -181,6 +185,9 @@ class DDIMSampler(object):
 
         self.control_net = trt_engine.control
         self.unet = trt_engine.unet
+
+
+
 
     def register_buffer(self, name, attr):
         if type(attr) == torch.Tensor:
@@ -341,18 +348,18 @@ class DDIMSampler(object):
                       unconditional_guidance_scale=1., unconditional_conditioning=None,
                       dynamic_threshold=None):
         b, *_, device = *x.shape, x.device
-        x = x.numpy()
-        t = t.numpy()
+
 
 
         if unconditional_conditioning is None or unconditional_guidance_scale == 1.:
             model_output = self.apply_model(x, t, c)
         else:
 
-            # host端的计算 ，apply_model中出现 host->deivce->host
-            model_t = self.apply_model(x, t, c)
-            model_uncond = self.apply_model(x, t, unconditional_conditioning)
+            #model_t,  model_uncond = self.apply_model(x, t, c), self.apply_model(x, t, unconditional_conditioning)
+            model_t,  model_uncond = self.apply_model(x, t, c, unconditional_conditioning)
+
             model_output = model_uncond + unconditional_guidance_scale * (model_t - model_uncond)
+
 
         if self.model.parameterization == "v":
             e_t = self.model.predict_eps_from_z_and_v(x, t, model_output)
@@ -395,18 +402,34 @@ class DDIMSampler(object):
         return x_prev, pred_x0
 
 
-    def apply_model(self, x_noisy, t, cond, *args, **kwargs):
+    def apply_model(self, x_noisy:torch.Tensor, t:torch.Tensor, cond:torch.Tensor, un_cond=None):
         # 此时传入的 cond 为输入数据的地址
         # controlnet 和 unet 对应的输入也应修改为数据地址
 
-        hint = cond['c_concat'].cpu().numpy()
-        cond_txt = cond['c_crossattn'].cpu().numpy()
+
+        hint = cond['c_concat'].contiguous()
+        cond_txt = cond['c_crossattn'].contiguous()
+
+        if un_cond == None:
+            input_x = x_noisy
+            input_h = hint
+            input_t = t
+            input_c = cond_txt
+        else:
+            
+            hint_ = un_cond['c_concat'].contiguous()
+            cond_txt_ = un_cond['c_crossattn'].contiguous()
+
+
+            input_x = torch.stack((x_noisy, x_noisy), dim=0)
+            input_h = torch.stack((hint, hint_), dim=0)
+            input_t = torch.stack((t, t), dim=0).to(torch.int32).contiguous()
+            input_c = torch.stack((cond_txt, cond_txt_), dim=0)
 
 
         # 输出为 13*tensor
         # control_trt = self.control_net.infer_origin([x_noisy, hint, t, cond_txt])
-        control_trt = self.control_net([x_noisy, hint, t, cond_txt])
-
+        control_trt = self.control_net([input_x, input_h, input_t, input_c])
 
         # 此处为 device->host 然后进行矩阵乘法
 
@@ -414,17 +437,24 @@ class DDIMSampler(object):
 
 
         # 然后会 host->device 进行运算
-        # 可以考虑使用cuda api执行矩阵计算 避免来回传输数据造成的性能浪费
 
-        inputData = [x_noisy, t, cond_txt]
+
+        inputData = [input_x, input_t, input_c]
         for c in control:
             inputData.append(c)
 
 
         eps_trt = self.unet(inputData)[0]
         # eps_trt = self.unet.infer_origin_cuda_graph(inputData)[0]
-        return eps_trt
 
+
+        if un_cond == None:
+            return eps_trt
+        else:
+            model_t = np.expand_dims(eps_trt[0], 0)
+            model_uncond  = np.expand_dims(eps_trt[1], 0)
+
+            return model_t, model_uncond
 
 
 

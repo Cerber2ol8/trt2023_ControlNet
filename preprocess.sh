@@ -1,23 +1,23 @@
 echo "preprocess"
 
-cd plugin
-mkdir target
+# cd plugin
+# mkdir target
 
 
-cd CustomLinearPlugin
-make clean
-make all
-mv CustomLinear.so ../target/CustomLinear.so
-cd ..
+# cd CustomLinearPlugin
+# make clean
+# make all
+# mv CustomLinear.so ../target/CustomLinear.so
+# cd ..
 
-cd LayerNormPlugin
-make clean
-make all
-mv LayerNorm.so ../target/LayerNorm.so
+# cd LayerNormPlugin
+# make clean
+# make all
+# mv LayerNorm.so ../target/LayerNorm.so
 
 
 
-cd ../..
+# cd ../..
 
 
 
