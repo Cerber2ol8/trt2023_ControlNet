@@ -15,6 +15,7 @@ onnxsim_model/
 plugin/AttentionPlugin
 plugin/crossAtenPlugin
 plugin/LayerNormPluginV1
+plugin/fmhaPlugin
 
 tmp/
 onnx_models_origin/
